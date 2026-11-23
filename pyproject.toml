@@ -1,0 +1,37 @@
+[project]
+name = "sales-analytics-platform"
+version = "0.2.0"
+description = "End-to-end Modern Data Stack learning project built around Net Revenue."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+# Dependencies are split into groups per component.
+# `uv sync` installs every group listed in [tool.uv].default-groups.
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
+
+[tool.uv]
+# This repository is a collection of components, not an installable library:
+# uv manages the environment but does not build or install the project itself.
+package = false
+required-version = ">=0.13"
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import sorting, B: common bugs,
+# UP: modern syntax, SIM: simplifications
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
