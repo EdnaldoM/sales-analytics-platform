@@ -1,0 +1,48 @@
+# Operational source systems: one PostgreSQL instance with three databases
+# (ecommerce, crm, erp). See docs/architecture/source-systems.md.
+#
+# Run from the repository root (the Makefile wraps this):
+#   docker compose --env-file .env -f infrastructure/postgres/compose.yaml up -d
+
+name: sales-analytics
+
+services:
+  postgres:
+    image: postgres:18.7
+    environment:
+      # Read from the root .env file (never committed). Compose stops with
+      # the message after ":?" if a variable is missing.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      GENERATOR_PASSWORD: ${GENERATOR_PASSWORD:?set GENERATOR_PASSWORD in .env}
+      AIRBYTE_READER_PASSWORD: ${AIRBYTE_READER_PASSWORD:?set AIRBYTE_READER_PASSWORD in .env}
+    ports:
+      # host_ip:host_port:container_port. Bound to 127.0.0.1: reachable from
+      # this machine only, not from the local network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Named volume for the data files. Since PostgreSQL 18 the official image
+      # stores data in /var/lib/postgresql/18/docker (PGDATA) and declares the
+      # volume at /var/lib/postgresql. Older tutorials use
+      # /var/lib/postgresql/data, which is wrong for 18+.
+      - postgres_data:/var/lib/postgresql
+      # Init scripts: executed in name order, only when the data directory is empty.
+      - ./init:/docker-entrypoint-initdb.d:ro
+    # Docker's default /dev/shm (64 MB) is too small for parallel queries.
+    shm_size: 256mb
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      # TCP check on 127.0.0.1 on purpose: during initialization the image runs a
+      # temporary server that listens on the Unix socket only, so a socket check
+      # would report "healthy" before the init scripts finish.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # No restart policy: the container starts only when you start it.
+
+volumes:
+  postgres_data:
