@@ -197,3 +197,7 @@ Every significant decision is recorded as an ADR with its context, alternatives 
 | 6 | Airflow orchestration | Planned |
 | 7 | CI/CD with GitHub Actions | Planned |
 | 8 | Power BI, final validation, clean-clone test | Planned |
+
+## License
+
+[MIT](LICENSE)

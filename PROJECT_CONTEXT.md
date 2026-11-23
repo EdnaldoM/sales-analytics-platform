@@ -2,7 +2,7 @@
 
 > Living document that keeps the technical context of the project across work sessions. **Updated at the end of every stage.**
 >
-> **Current stage:** 1 (Business definition, modeling and architecture) · **Status:** Completed, awaiting first commit · **Last updated:** 2026-11-22
+> **Current stage:** 2 (Data generation) · **Status:** Planning · **Last completed:** Stage 1 (`v0.1.0`) · **Last updated:** 2026-11-23
 
 ## 1. Current architecture (summary)
 
@@ -62,6 +62,7 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | D-29 | `.gitattributes` enforcing LF line endings | — |
 | D-30 | Repository-local Git identity (personal email); the global Git identity of the machine is not used | — |
 | D-31 | Diagrams: Mermaid for ERDs and flows; diagrams.net (`.drawio.svg`) for the architecture overview | [docs/README.md](docs/README.md#diagrams) |
+| D-32 | MIT license; repository made public on 2026-11-23 | [LICENSE](LICENSE) |
 
 ## 3. Pending decisions
 
@@ -76,7 +77,7 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | P-07 | Where the production `manifest.json` is stored for Slim CI | 7 | Artifact, release asset or Snowflake stage |
 | P-08 | SQLFluff templater (`dbt` vs `jinja`); adoption of pre-commit | 7 | |
 | P-09 | Confirm GitHub Free branch-protection and Actions-minutes rules for public repositories | 7 | |
-| P-10 | Repository license | Before going public | Not decided |
+| ~~P-10~~ | ~~Repository license~~ | — | Resolved: MIT (D-32) |
 
 ## 4. Repository structure
 
@@ -86,6 +87,7 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 .
 ├── README.md
 ├── PROJECT_CONTEXT.md
+├── LICENSE
 ├── .gitignore
 ├── .gitattributes
 └── docs/
@@ -129,7 +131,7 @@ No runtime component is pinned yet. Versions are chosen and pinned in each stage
 
 | Stage | Status | Version |
 |---|---|---|
-| 1. Business, modeling, architecture | ✅ Documentation complete | `v0.1.0` (after commit) |
+| 1. Business, modeling, architecture | ✅ Done | `v0.1.0` |
 | 2. Data generation | Not started | |
 | 3. Snowflake + Airbyte | Not started | |
 | 4. dbt | Not started | |
@@ -144,7 +146,8 @@ Commits are executed by the project owner. This table records them after confirm
 
 | Date | Commit | Stage | Description |
 |---|---|---|---|
-| — | — | 1 | *Pending:* `docs: define project scope, data model and architecture` |
+| 2026-11-22 | `93cb341` | 1 | `docs: define project scope, data model and architecture` (tag `v0.1.0`) |
+| 2026-11-23 | *pending* | 1 | `docs: add MIT license` |
 
 ## 8. Tests and validations executed
 
