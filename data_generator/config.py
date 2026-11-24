@@ -27,6 +27,7 @@ class Volumes:
     crm_linked_share: float = 0.85  # online customers who also have a CRM record
     crm_leads: int = 4_600  # CRM-only customers who never bought online
     products: int = 2_000
+    orders: int = 400_000  # ~2.5 items per order: ~1 million order items
 
 
 @dataclass(frozen=True)

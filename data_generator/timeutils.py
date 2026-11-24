@@ -14,8 +14,15 @@ from data_generator.config import LOCAL_TZ, UTC
 
 
 def random_between(rng: random.Random, start: datetime, end: datetime) -> datetime:
-    """Random moment in [start, end), with one-second resolution."""
-    seconds = int((end - start).total_seconds())
+    """Random moment in [start, end), with one-second resolution, returned in UTC.
+
+    The arithmetic is done in UTC on purpose. Python compares and adds
+    datetimes that share the same time zone by their wall-clock values, which
+    ignores daylight saving changes: on the night the clocks go back, local
+    order and real (UTC) order disagree.
+    """
+    start = as_utc(start)
+    seconds = int((as_utc(end) - start).total_seconds())
     if seconds <= 0:
         return start
     return start + timedelta(seconds=rng.randrange(seconds))

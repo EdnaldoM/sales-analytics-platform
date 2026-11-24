@@ -94,6 +94,75 @@ class Customer:
     updated_at: datetime
 
 
+@dataclass(slots=True)
+class Order:
+    order_id: int
+    order_number: str
+    customer_id: int | None
+    guest_email: str | None
+    order_status: str
+    order_ts: datetime
+    coupon_code: str | None
+    order_discount_amount: Decimal
+    shipping_amount: Decimal
+    ship_city: str
+    ship_state: str
+    ship_postal_code: str | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class OrderItem:
+    order_item_id: int
+    order_id: int
+    line_number: int
+    sku: str
+    quantity: int
+    unit_price: Decimal
+    item_discount_amount: Decimal
+    tax_amount: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class Payment:
+    payment_id: int
+    order_id: int
+    attempt_number: int
+    payment_method: str
+    payment_status: str
+    amount: Decimal
+    provider_transaction_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class Return:
+    return_id: int
+    order_id: int
+    return_status: str
+    reason_code: str
+    requested_at: datetime
+    refunded_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class ReturnItem:
+    return_item_id: int
+    return_id: int
+    order_item_id: int
+    quantity_returned: int
+    refund_amount: Decimal  # net of tax
+    created_at: datetime
+    updated_at: datetime
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------

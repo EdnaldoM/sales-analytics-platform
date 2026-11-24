@@ -214,7 +214,7 @@ def generate_customers(cfg: GeneratorConfig) -> CustomerData:
     rng = cfg.rng("customers")
     fake = Faker("en_US")
     fake.seed_instance(rng.getrandbits(64))
-    emails = _EmailFactory(rng)
+    emails = EmailFactory(rng)
     volumes = cfg.volumes
     pre_history_start = cfg.window_start - PRE_HISTORY
     last_moment = cfg.window_end - timedelta(seconds=1)
@@ -298,14 +298,15 @@ def _signup_moment(
     """30% of accounts predate the history; the rest grow over time (more recent signups)."""
     if rng.random() < 0.30:
         return random_between(rng, pre_history_start, cfg.window_start)
-    span = (cfg.window_end - cfg.window_start).total_seconds()
-    return cfg.window_start + timedelta(seconds=int(span * rng.random() ** 0.75))
+    start = as_utc(cfg.window_start)
+    span = (as_utc(cfg.window_end) - start).total_seconds()
+    return start + timedelta(seconds=int(span * rng.random() ** 0.75))
 
 
 def _crm_contacts(
     rng: random.Random,
     cfg: GeneratorConfig,
-    emails: _EmailFactory,
+    emails: EmailFactory,
     person: _Person,
     first_contact_id: int,
 ) -> list[CrmContact]:
@@ -345,7 +346,7 @@ def _phone(rng: random.Random) -> str:
     return f"({area}) 555-{rng.randrange(10_000):04d}"
 
 
-class _EmailFactory:
+class EmailFactory:
     """Unique lowercase emails on reserved example domains."""
 
     def __init__(self, rng: random.Random) -> None:

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from collections.abc import Sequence
 
 from data_generator import db, reference
 from data_generator.config import GeneratorConfig
+from data_generator.orders import OrderGenerator
 
 log = logging.getLogger(__name__)
 
@@ -47,11 +49,7 @@ def run(cfg: GeneratorConfig) -> None:
             ("customer_contacts", customers.crm_contacts, "contact_id"),
         ],
     )
-    _load(
-        "ecommerce",
-        ECOMMERCE_TABLES,
-        [("customers", customers.ecommerce_customers, "customer_id")],
-    )
+    _load_ecommerce(OrderGenerator(cfg, erp, customers), customers.ecommerce_customers)
     log.info("Seed finished in %.1fs", time.perf_counter() - started)
 
 
@@ -68,3 +66,39 @@ def _load(
             if id_column:
                 db.sync_identity(conn, table, id_column)
             log.info("Loaded %s.%s: %s rows", dbname, table, f"{count:,}")
+
+
+def _load_ecommerce(generator: OrderGenerator, ecommerce_customers: Sequence[object]) -> None:
+    """Customers, then orders month by month, then returns: one transaction."""
+    with db.connect("ecommerce") as conn:
+        db.truncate(conn, ECOMMERCE_TABLES)
+        count = db.copy_records(conn, "customers", ecommerce_customers)
+        log.info("Loaded ecommerce.customers: %s rows", f"{count:,}")
+
+        totals: Counter[str] = Counter()
+        for batch in generator.monthly_batches():
+            totals["orders"] += db.copy_records(conn, "orders", batch.orders)
+            totals["order_items"] += db.copy_records(conn, "order_items", batch.order_items)
+            totals["payments"] += db.copy_records(conn, "payments", batch.payments)
+            log.info(
+                "Loaded %s: %s orders, %s items",
+                batch.month,
+                f"{len(batch.orders):,}",
+                f"{len(batch.order_items):,}",
+            )
+
+        returns = generator.returns()
+        totals["returns"] = db.copy_records(conn, "returns", returns.returns)
+        totals["return_items"] = db.copy_records(conn, "return_items", returns.return_items)
+
+        for table, id_column in (
+            ("customers", "customer_id"),
+            ("orders", "order_id"),
+            ("order_items", "order_item_id"),
+            ("payments", "payment_id"),
+            ("returns", "return_id"),
+            ("return_items", "return_item_id"),
+        ):
+            db.sync_identity(conn, table, id_column)
+        for table, count in totals.items():
+            log.info("Loaded ecommerce.%s: %s rows", table, f"{count:,}")
