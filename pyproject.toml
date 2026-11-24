@@ -14,13 +14,17 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
+generator = [
+    "faker>=40.63.0",
+    "psycopg[binary]>=3.3.9",
+]
 
 [tool.uv]
 # This repository is a collection of components, not an installable library:
 # uv manages the environment but does not build or install the project itself.
 package = false
 required-version = ">=0.13"
-default-groups = ["dev"]
+default-groups = ["dev", "generator"]
 
 [tool.ruff]
 line-length = 100
