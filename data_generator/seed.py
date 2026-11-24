@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from data_generator import db, reference
 from data_generator.config import GeneratorConfig
 from data_generator.orders import OrderGenerator
+from data_generator.quality import QualityInjector
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ def run(cfg: GeneratorConfig) -> None:
 
     erp = reference.generate_erp(cfg)
     customers = reference.generate_customers(cfg)
+    # The order generator reads the clean reference data once, when it is created.
+    orders = OrderGenerator(cfg, erp, customers)
+    quality = QualityInjector(cfg)
+    quality.apply_to_reference(erp, customers)
     log.info("Generated reference data in %.1fs", time.perf_counter() - started)
 
     # Parents before children: foreign keys are checked row by row during COPY.
@@ -49,7 +54,9 @@ def run(cfg: GeneratorConfig) -> None:
             ("customer_contacts", customers.crm_contacts, "contact_id"),
         ],
     )
-    _load_ecommerce(OrderGenerator(cfg, erp, customers), customers.ecommerce_customers)
+    _load_ecommerce(orders, quality, customers.ecommerce_customers)
+    for issue, count in sorted(quality.counts.items(), key=_issue_order):
+        log.info("Injected %s: %s rows", issue, f"{count:,}")
     log.info("Seed finished in %.1fs", time.perf_counter() - started)
 
 
@@ -68,7 +75,9 @@ def _load(
             log.info("Loaded %s.%s: %s rows", dbname, table, f"{count:,}")
 
 
-def _load_ecommerce(generator: OrderGenerator, ecommerce_customers: Sequence[object]) -> None:
+def _load_ecommerce(
+    generator: OrderGenerator, quality: QualityInjector, ecommerce_customers: Sequence[object]
+) -> None:
     """Customers, then orders month by month, then returns: one transaction."""
     with db.connect("ecommerce") as conn:
         db.truncate(conn, ECOMMERCE_TABLES)
@@ -77,6 +86,7 @@ def _load_ecommerce(generator: OrderGenerator, ecommerce_customers: Sequence[obj
 
         totals: Counter[str] = Counter()
         for batch in generator.monthly_batches():
+            quality.apply_to_batch(batch)
             totals["orders"] += db.copy_records(conn, "orders", batch.orders)
             totals["order_items"] += db.copy_records(conn, "order_items", batch.order_items)
             totals["payments"] += db.copy_records(conn, "payments", batch.payments)
@@ -102,3 +112,9 @@ def _load_ecommerce(generator: OrderGenerator, ecommerce_customers: Sequence[obj
             db.sync_identity(conn, table, id_column)
         for table, count in totals.items():
             log.info("Loaded ecommerce.%s: %s rows", table, f"{count:,}")
+
+
+def _issue_order(item: tuple[str, int]) -> tuple[int, str]:
+    """Q1, Q2, ..., Q12 in numeric order (a plain sort puts Q10 before Q2)."""
+    issue = item[0]
+    return int(issue[1:].split()[0]), issue
