@@ -8,16 +8,18 @@ SHELL := /bin/bash
 
 ENV_FILE := .env
 COMPOSE  := docker compose --env-file $(ENV_FILE) -f infrastructure/postgres/compose.yaml
+# Runs the generator inside the uv environment, with the variables from .env
+GENERATOR := uv run --env-file $(ENV_FILE) python -m data_generator
 
 # Database used by `make psql`. Override on the command line: make psql DB=crm
 DB ?= postgres
 
 # Targets that are command names, not files
-.PHONY: help setup check-env up down ps logs psql reset lint format
+.PHONY: help setup check-env up down ps logs psql reset seed stats test lint format
 
 help: ## Show this list of commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-8s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-9s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------
 # Setup
@@ -58,8 +60,20 @@ reset: check-env ## DELETE the data volume and recreate empty databases
 	$(COMPOSE) up -d --wait
 
 # ---------------------------------------------------------------
+# Data generator
+# ---------------------------------------------------------------
+seed: up ## Rebuild the historical source data (deletes existing rows). Options: SEED=n ANCHOR=YYYY-MM-DD
+	$(GENERATOR) seed $(if $(SEED),--seed $(SEED)) $(if $(ANCHOR),--anchor-date $(ANCHOR))
+
+stats: check-env ## Show row counts per table in the source databases
+	$(GENERATOR) stats
+
+# ---------------------------------------------------------------
 # Code quality
 # ---------------------------------------------------------------
+test: ## Run the automated tests (no database needed)
+	uv run pytest
+
 lint: ## Check Python code style and common bugs (ruff)
 	uv run ruff check .
 	uv run ruff format --check .
