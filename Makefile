@@ -15,7 +15,7 @@ GENERATOR := uv run --env-file $(ENV_FILE) python -m data_generator
 DB ?= postgres
 
 # Targets that are command names, not files
-.PHONY: help setup check-env up down ps logs psql reset seed stats lint format
+.PHONY: help setup check-env up down ps logs psql reset seed stats test lint format
 
 help: ## Show this list of commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -71,6 +71,9 @@ stats: check-env ## Show row counts per table in the source databases
 # ---------------------------------------------------------------
 # Code quality
 # ---------------------------------------------------------------
+test: ## Run the automated tests (no database needed)
+	uv run pytest
+
 lint: ## Check Python code style and common bugs (ruff)
 	uv run ruff check .
 	uv run ruff format --check .
