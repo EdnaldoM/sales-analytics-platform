@@ -2,7 +2,7 @@
 
 > Living document that keeps the technical context of the project across work sessions. **Updated at the end of every stage.**
 >
-> **Current stage:** 2 (Data generation) · **Status:** Planning · **Last completed:** Stage 1 (`v0.1.0`) · **Last updated:** 2026-11-23
+> **Current stage:** 3 (Snowflake + Airbyte) · **Status:** Planning · **Last completed:** Stage 2 (`v0.2.0`) · **Last updated:** 2026-11-25
 
 ## 1. Current architecture (summary)
 
@@ -64,6 +64,22 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | D-31 | Diagrams: Mermaid for ERDs and flows; diagrams.net (`.drawio.svg`) for the architecture overview | [docs/README.md](docs/README.md#diagrams) |
 | D-32 | MIT license; repository made public on 2026-11-23 | [LICENSE](LICENSE) |
 
+### 2.4. Stage 2: source systems and data generator
+
+| # | Decision | Reference |
+|---|---|---|
+| D-33 | Image `postgres:18.7`; named volume mounted at `/var/lib/postgresql` (PostgreSQL 18+ layout); port bound to `127.0.0.1`; memory limit 1 GB; TCP healthcheck | `infrastructure/postgres/compose.yaml` |
+| D-34 | Roles: `generator` owns databases and tables; `airbyte_reader` is read-only (`CONNECT`, `USAGE`, `SELECT` + default privileges); `PUBLIC` revoked | `infrastructure/postgres/init/` |
+| D-35 | `updated_at` maintained by `BEFORE UPDATE` triggers `WHEN (OLD IS DISTINCT FROM NEW)`: no-op updates do not move the cursor | `infrastructure/postgres/init/` |
+| D-36 | Generator as a Python package (`python -m data_generator`), Faker + psycopg; bulk load with `COPY`; one transaction per database; dependency groups in `pyproject.toml` | `data_generator/` |
+| D-37 | Reproducibility: default seed `42`, anchor date `2026-11-22`; one independent random stream per domain (`random.Random("<seed>:<stream>")`) | `data_generator/config.py` |
+| D-38 | Clean data first; quality issues Q1–Q12 injected in a separate step (`quality.py`) with explicit rates and its own random stream. Q8 and Q9 are inherent to the generation | `data_generator/quality.py` |
+| D-39 | All time arithmetic in UTC; conversion to each system's convention only when a row is built (daylight saving time makes local wall-clock comparisons wrong) | `data_generator/timeutils.py` |
+| D-40 | Coupon rounding residual goes to the item with the largest base, **the first one by line number on ties**. dbt must apply the same rule | [metrics-definition.md](docs/business/metrics-definition.md) |
+| D-41 | Orders generated as monthly batches (Python generator) to keep memory low (~220 MB peak) | `data_generator/orders.py` |
+| D-42 | `make simulate`: one "tick" per run with real timestamps (database defaults and triggers), three independent transactions, same quality issues as the history; not reproducible by design | `data_generator/simulate.py` |
+| D-43 | Automated tests run on a small in-memory dataset, without a database: business rules on clean data, structural rules on data with issues | `tests/` |
+
 ## 3. Pending decisions
 
 | # | Topic | Stage | Notes |
@@ -78,18 +94,24 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | P-08 | SQLFluff templater (`dbt` vs `jinja`); adoption of pre-commit | 7 | |
 | P-09 | Confirm GitHub Free branch-protection and Actions-minutes rules for public repositories | 7 | |
 | ~~P-10~~ | ~~Repository license~~ | — | Resolved: MIT (D-32) |
+| P-11 | Ingestion tool: keep Airbyte (decided) or document dlt as the lightweight alternative in the Stage 3 ADR | 3 | Airbyte stays unless a new decision is approved |
 
 ## 4. Repository structure
 
-**Current (Stage 1):**
+**Current (Stage 2):**
 
 ```text
 .
 ├── README.md
 ├── PROJECT_CONTEXT.md
 ├── LICENSE
-├── .gitignore
-├── .gitattributes
+├── .gitignore · .gitattributes · .python-version · .env.example
+├── Makefile                 make help
+├── pyproject.toml · uv.lock
+├── infrastructure/postgres/ compose.yaml + init/ (databases, roles, tables, grants)
+├── data_generator/          cli · config · catalog · records · timeutils · reference · orders
+│                            quality · simulate · seed · db
+├── tests/                   conftest + test_money · test_determinism · test_invariants
 └── docs/
     ├── README.md
     ├── getting-started.md
@@ -106,12 +128,15 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 
 ## 5. Tool versions
 
-No runtime component is pinned yet. Versions are chosen and pinned in each stage after checking the official documentation.
+Versions are chosen and pinned in each stage after checking the official documentation.
 
 | Tool | Version | Status / constraint |
 |---|---|---|
-| Python | TBD (Stage 2) | Pinned via `.python-version` |
-| PostgreSQL image | TBD (Stage 2) | |
+| Python | 3.12 | Pinned via `.python-version`; `requires-python >=3.12,<3.13` |
+| uv | 0.13.9 (machine 1) | `required-version >=0.13` |
+| PostgreSQL image | `postgres:18.7` | Debian trixie based |
+| Faker · psycopg[binary] | 40.63.0 · 3.3.9 | Group `generator`, locked in `uv.lock` |
+| pytest · ruff | 9.2.0 · 0.17.6 | Group `dev`, locked in `uv.lock` |
 | Airbyte (`abctl`, platform, connectors) | TBD (Stage 3) | Snowflake destination ≥ 5.x requires key pair or PAT |
 | dbt Core / dbt-snowflake | TBD (Stage 4) | dbt-snowflake ≥ 1.10.6 |
 | Apache Airflow | TBD (Stage 6) | 3.x; Airbyte provider ≥ 6.x |
@@ -125,14 +150,14 @@ No runtime component is pinned yet. Versions are chosen and pinned in each stage
 | `rlespinasse/drawio-desktop-headless` (Docker) | v1.78.0 | Export `.drawio.svg` (run with `--shm-size=1g`) |
 | Simple Icons | 16.38.1 | Technology logos |
 
-**Development machine (machine 1):** Windows + WSL2 Ubuntu 24.04, 16 GB RAM (7.6 GiB in WSL by default), 12 CPUs, Docker Engine 29.4.2 (native in WSL), Docker Compose v5.1.3, Git 2.43.0, GNU Make 4.3, Python 3.12.3 (system). **Machine 2:** Windows + WSL2, 24 GB RAM.
+**Development machine (machine 1):** Windows + WSL2 Ubuntu 24.04, 16 GB RAM (WSL limited to 10 GB by `.wslconfig`; 7.6 GiB by default), 12 CPUs, Docker Engine 29.4.2 (native in WSL), Docker Compose v5.1.3, Git 2.43.0, GNU Make 4.3, Python 3.12.3 (system). **Machine 2:** Windows + WSL2, 24 GB RAM.
 
 ## 6. Implementation status
 
 | Stage | Status | Version |
 |---|---|---|
 | 1. Business, modeling, architecture | ✅ Done | `v0.1.0` |
-| 2. Data generation | Not started | |
+| 2. Data generation | ✅ Done | `v0.2.0` |
 | 3. Snowflake + Airbyte | Not started | |
 | 4. dbt | Not started | |
 | 5. Governance | Not started | |
@@ -147,7 +172,10 @@ Commits are executed by the project owner. This table records them after confirm
 | Date | Commit | Stage | Description |
 |---|---|---|---|
 | 2026-11-22 | `93cb341` | 1 | `docs: define project scope, data model and architecture` (tag `v0.1.0`) |
-| 2026-11-23 | *pending* | 1 | `docs: add MIT license` |
+| 2026-11-23 | `e966cd2` | 1 | `docs: add MIT license (#1)` |
+| 2026-11-23 | `e0ce9c8` | 2 | `build: local infrastructure for source systems (#2)` (PR A, squash) |
+| 2026-11-24 | `6d47bee` | 2 | `feat: synthetic data generator for source systems (#3)` (PR B, squash: reference data, orders, quality issues, tests) |
+| 2026-11-25 | PR C | 2 | `feat(data-generator): simulate incremental source activity` + `docs: record stage 2 results` (tag `v0.2.0`) |
 
 ## 8. Tests and validations executed
 
@@ -156,28 +184,38 @@ Commits are executed by the project owner. This table records them after confirm
 | 2026-11-22 | All 11 Mermaid diagrams rendered with mermaid-cli 12.0.1 | ✅ 11/11 OK |
 | 2026-11-22 | Relative links in `docs/` resolve to existing files | ✅ (after Stage 1 files completed) |
 | 2026-11-22 | Architecture diagram exported and visually reviewed | ✅ |
+| 2026-11-24 | Full seed on a throwaway instance: time and memory | ✅ ~70–86 s, peak ~220 MB |
+| 2026-11-24 | Reproducibility: re-seed with the same seed, md5 of every table | ✅ identical |
+| 2026-11-24 | Order integrity: payment = items net + tax + shipping; returns only on delivered orders; returned ≤ sold; nothing after the anchor | ✅ 0 violations |
+| 2026-11-24 | Business patterns: growth (Dec 2024 23.9k → Dec 2025 26.8k orders), Black Friday spike, top 10% customers = 46% of orders, 5% guests, AOV ~$312 | ✅ |
+| 2026-11-24 | Quality issue rates vs plan (Q1 15.0%, Q2 30.0%, Q4 40.1%, Q5 2.99%, Q6 0.1%, Q7 0.5%, Q10 8/3/5%, Q11 459 rows, Q12 0.98%) | ✅ within plan |
+| 2026-11-24 | `make test`: 26 tests | ✅ all pass (~5 s) |
+| 2026-11-25 | `make simulate` × 9 after a seed: integrity checks above + no paid order without captured payment + one open cost row per product + valid cross-system references | ✅ 0 violations; 2–4 s per run |
 
 ## 9. Known issues and observations
 
 | # | Observation | Impact | Action |
 |---|---|---|---|
 | K-01 | Machine 1 has Docker images from previous projects (Airbyte 2.1.0, several Airflow images, `postgres:14`) | Possible port conflicts (8000, 8080, 5432) or an existing `abctl` installation | Check at Stages 2–3 before starting services |
-| K-02 | WSL on machine 1 has 7.6 GiB RAM by default | Not enough for Airbyte + Airflow together | Set `.wslconfig` `memory=12GB` (Stage 3) |
+| K-02 | WSL on machine 1 is limited to 10 GB | May be tight for Airbyte + Airflow together | Check memory before Stage 3; raise to 12 GB if needed |
 | K-03 | Global Git identity on machine 1 is not the personal one | Wrong author on commits if the local config is missing | Repository-local `user.email` configured; repeat after every clone |
 | K-04 | draw.io SVG export is ~1 MB (PNG fallbacks for HTML labels) | Larger file in Git | Accepted |
 | K-05 | dbt and Power BI logos are not in Simple Icons | Diagram uses brand-colored labels | Accepted |
+| K-06 | `make seed` after Airbyte syncs rewrites history with older `updated_at` values and reuses ids | Incremental syncs miss the change; `RAW` would mix two histories | After a re-seed: full refresh of the Airbyte connections and `RAW` (documented in getting-started) |
+| K-07 | Default anchor date (2026-11-22) is in the past | No activity between the anchor and the first `make simulate` | Accepted: a realistic gap; or seed with `ANCHOR=<yesterday>` |
+| K-08 | Simplifications in the synthetic data: state sales tax rates are approximate base rates; city names come from Faker and do not match the state | None for the analysis (region uses the state only) | Accepted, documented |
+| K-09 | `make simulate` is not reproducible (clock and current data) | Results differ between runs and machines | By design; `--seed` fixes only the random choices |
 
 ## 10. Next activities
 
-**Stage 2: Data generation with Python and PostgreSQL.** The planning step is presented for approval before any implementation:
+**Stage 3: Snowflake + Airbyte.** The plan is presented for approval before any implementation:
 
-1. Docker fundamentals for this project: images, containers, Compose, volumes, networks, healthchecks.
-2. PostgreSQL container: three databases, init scripts, `updated_at` triggers, read-only users for Airbyte.
-3. uv project setup: Python version, dependencies, lockfile.
-4. Generator design: seed control, anchor date, historical load vs incremental run, implementation of quality issues Q1–Q12.
-5. Makefile: `setup`, `up`, `seed`, `simulate`, `reset`, `help`.
-6. `.env.example`.
-7. Validation: row counts, quality-issue rates, reproducibility (same seed → same data).
+1. Check machine resources (K-01, K-02): old Airbyte images, ports 8000/8080, WSL memory.
+2. Create the Snowflake **Enterprise** trial with the personal email (D-16).
+3. Versioned, idempotent setup SQL: resource monitor, warehouses, databases, roles, users, grants (D-17, D-18); key-pair authentication.
+4. Airbyte with `abctl` (pinned version); three PostgreSQL sources with the `airbyte_reader` role; Snowflake destination.
+5. Connections with cursor-based incremental sync on `updated_at` (D-20); resolve P-01, P-02, P-03; record the ingestion-tool choice (P-11).
+6. Validation: row counts PostgreSQL vs `RAW`; a `make simulate` run followed by an incremental sync picks up inserts and updates.
 
 ## 11. How to resume in a new session
 
