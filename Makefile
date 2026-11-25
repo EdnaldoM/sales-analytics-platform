@@ -15,7 +15,7 @@ GENERATOR := uv run --env-file $(ENV_FILE) python -m data_generator
 DB ?= postgres
 
 # Targets that are command names, not files
-.PHONY: help setup check-env up down ps logs psql reset seed stats test lint format
+.PHONY: help setup check-env up down ps logs psql reset seed simulate stats test lint format
 
 help: ## Show this list of commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -64,6 +64,9 @@ reset: check-env ## DELETE the data volume and recreate empty databases
 # ---------------------------------------------------------------
 seed: up ## Rebuild the historical source data (deletes existing rows). Options: SEED=n ANCHOR=YYYY-MM-DD
 	$(GENERATOR) seed $(if $(SEED),--seed $(SEED)) $(if $(ANCHOR),--anchor-date $(ANCHOR))
+
+simulate: up ## Add one run of new source activity (real timestamps). Options: ORDERS=n
+	$(GENERATOR) simulate $(if $(ORDERS),--orders $(ORDERS))
 
 stats: check-env ## Show row counts per table in the source databases
 	$(GENERATOR) stats

@@ -386,9 +386,9 @@ class OrderGenerator:
     def _coupon(self, day: date, first_order: bool) -> tuple[str, Decimal] | None:
         """Seasonal campaigns, a welcome coupon and an always-on code."""
         rng = self.rng
-        campaign = _campaign(day)
-        if campaign is not None:
-            code, rate, probability = campaign
+        active = campaign(day)
+        if active is not None:
+            code, rate, probability = active
             if rng.random() < probability:
                 return code, rate
         if first_order and rng.random() < 0.30:
@@ -585,7 +585,7 @@ def _thanksgiving(year: int) -> date:
     return first_thursday + timedelta(weeks=3)
 
 
-def _campaign(day: date) -> tuple[str, Decimal, float] | None:
+def campaign(day: date) -> tuple[str, Decimal, float] | None:
     """Coupon campaign active on a day: (code, discount rate, share of orders using it)."""
     thanksgiving = _thanksgiving(day.year)
     if thanksgiving + timedelta(days=1) <= day <= thanksgiving + timedelta(days=4):
