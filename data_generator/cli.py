@@ -1,6 +1,7 @@
 """Command-line interface.
 
 python -m data_generator seed  [--seed N] [--anchor-date YYYY-MM-DD]
+python -m data_generator simulate [--seed N] [--orders N]
 python -m data_generator stats
 """
 
@@ -10,7 +11,7 @@ import argparse
 import logging
 from datetime import date
 
-from data_generator import db, seed
+from data_generator import db, seed, simulate
 from data_generator.config import GeneratorConfig
 
 
@@ -29,6 +30,16 @@ def main(argv: list[str] | None = None) -> int:
         type=date.fromisoformat,
         help="last day of the history, YYYY-MM-DD (default: GENERATOR_ANCHOR_DATE)",
     )
+    simulate_parser = commands.add_parser(
+        "simulate", help="add one run of new activity (orders, status changes, ...)"
+    )
+    simulate_parser.add_argument("--seed", type=int, help="fix the random choices (optional)")
+    simulate_parser.add_argument(
+        "--orders",
+        type=int,
+        default=simulate.ORDERS_PER_RUN,
+        help=f"new orders in this run (default: {simulate.ORDERS_PER_RUN})",
+    )
     commands.add_parser("stats", help="show row counts per table")
 
     args = parser.parse_args(argv)
@@ -38,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "seed":
         seed.run(GeneratorConfig.from_env(seed=args.seed, anchor_date=args.anchor_date))
+    elif args.command == "simulate":
+        simulate.run(seed=args.seed, orders=args.orders)
     elif args.command == "stats":
         _print_stats()
     return 0

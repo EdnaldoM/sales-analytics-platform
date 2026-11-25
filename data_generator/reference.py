@@ -224,7 +224,7 @@ def generate_customers(cfg: GeneratorConfig) -> CustomerData:
     for _ in range(volumes.ecommerce_customers):
         first, last = fake.first_name(), fake.last_name()
         signup = _signup_moment(rng, cfg, pre_history_start)
-        online.append(_Person(first, last, emails.new(first, last), _phone(rng), signup))
+        online.append(_Person(first, last, emails.new(first, last), random_phone(rng), signup))
     online.sort(key=lambda person: person.signup)
 
     # 2. Most online customers also exist in the CRM, before or after their signup.
@@ -242,7 +242,9 @@ def generate_customers(cfg: GeneratorConfig) -> CustomerData:
     for _ in range(volumes.crm_leads):
         first, last = fake.first_name(), fake.last_name()
         created = random_between(rng, pre_history_start, cfg.window_end)
-        leads.append(_Person(first, last, emails.new(first, last), _phone(rng), None, created))
+        leads.append(
+            _Person(first, last, emails.new(first, last), random_phone(rng), None, created)
+        )
 
     # 4. CRM records and contacts. CRM ids also follow creation order.
     in_crm = sorted(
@@ -316,13 +318,15 @@ def _crm_contacts(
     if rng.random() < 0.60:
         # Usually the same phone as the online account, sometimes a different one
         same_phone = person.signup is None or rng.random() < 0.80
-        phone = person.phone if same_phone else _phone(rng)
+        phone = person.phone if same_phone else random_phone(rng)
         entries.append(("phone", phone, True, created))
     if rng.random() < 0.10:
         extra_email = emails.new(person.first_name, person.last_name)
         entries.append(("email", extra_email, False, random_between(rng, created, cfg.window_end)))
     if rng.random() < 0.05:
-        entries.append(("phone", _phone(rng), False, random_between(rng, created, cfg.window_end)))
+        entries.append(
+            ("phone", random_phone(rng), False, random_between(rng, created, cfg.window_end))
+        )
 
     return [
         CrmContact(
@@ -338,7 +342,7 @@ def _crm_contacts(
     ]
 
 
-def _phone(rng: random.Random) -> str:
+def random_phone(rng: random.Random) -> str:
     """US phone in one canonical format, on the fictional 555 exchange."""
     area = rng.randint(201, 989)
     if area % 100 == 11:  # N11 codes are service numbers, not area codes

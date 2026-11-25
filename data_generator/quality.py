@@ -26,6 +26,7 @@ never changes which orders or customers exist.
 
 from __future__ import annotations
 
+import random
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -71,7 +72,6 @@ class QualityInjector:
         self.cfg = cfg
         self.rng = cfg.rng("quality")
         self.counts: Counter[str] = Counter()
-        self._state_names = {s.code: s.name for s in US_STATES}
         self._orphan_skus = [
             f"CK-{9000 + n}" for n in self.rng.sample(range(1000), ORPHAN_SKU_COUNT)
         ]
@@ -95,21 +95,21 @@ class QualityInjector:
 
         for contact in customers.crm_contacts:
             if contact.contact_type == "email" and rng.random() < EMAIL_VARIANT_SHARE:
-                contact.contact_value = self._email_variant(contact.contact_value)
+                contact.contact_value = email_variant(rng, contact.contact_value)
                 self.counts["Q1 crm email variant"] += 1
             elif contact.contact_type == "phone" and rng.random() < PHONE_FORMAT_SHARE:
-                contact.contact_value = self._phone_variant(contact.contact_value)
+                contact.contact_value = phone_variant(rng, contact.contact_value)
                 self.counts["Q4 crm phone format"] += 1
 
         for customer in customers.ecommerce_customers:
             if rng.random() < EMAIL_VARIANT_SHARE:
-                customer.email = self._email_variant(customer.email)
+                customer.email = email_variant(rng, customer.email)
                 self.counts["Q1 ecommerce email variant"] += 1
             if rng.random() < MISSING_PHONE_SHARE:
                 customer.phone = None
                 self.counts["Q10 customers.phone null"] += 1
             elif rng.random() < PHONE_FORMAT_SHARE:
-                customer.phone = self._phone_variant(customer.phone)
+                customer.phone = phone_variant(rng, customer.phone)
                 self.counts["Q4 ecommerce phone format"] += 1
 
     def _duplicate_crm_customers(self, customers: CustomerData) -> None:
@@ -199,7 +199,7 @@ class QualityInjector:
                 order.ship_postal_code = None
                 self.counts["Q10 orders.ship_postal_code null"] += 1
             if rng.random() < BAD_STATE_SHARE:  # Q12
-                order.ship_state = self._state_variant(order.ship_state)
+                order.ship_state = state_variant(rng, order.ship_state)
                 self.counts["Q12 bad ship_state"] += 1
 
         for item in batch.order_items:
@@ -208,7 +208,7 @@ class QualityInjector:
                 item.sku = rng.choice(self._orphan_skus)
                 self.counts["Q6 orphan sku"] += 1
             elif roll < ORPHAN_SKU_SHARE + SKU_VARIANT_SHARE:  # Q5
-                item.sku = self._sku_variant(item.sku)
+                item.sku = sku_variant(rng, item.sku)
                 self.counts["Q5 sku variant"] += 1
 
         payments: list[Payment] = []
@@ -234,52 +234,61 @@ class QualityInjector:
         self._next_payment_id += 1
         return payment_id
 
-    # -- value variants ------------------------------------------------------
 
-    def _email_variant(self, email: str) -> str:
-        """Q1: `john.doe@example.com` -> `John.Doe@Example.com `, `JOHN.DOE@...`."""
-        kind = self.rng.randrange(4)
-        if kind == 0:
-            local, domain = email.split("@")
-            return f"{'.'.join(p.capitalize() for p in local.split('.'))}@{domain.capitalize()}"
-        if kind == 1:
-            return email.upper()
-        if kind == 2:
-            return f"{email} "
-        return f" {email.capitalize()}"
+# ==========================================================================
+# Value variants: also used by the incremental simulation (simulate.py)
+# ==========================================================================
 
-    def _phone_variant(self, phone: str) -> str:
-        """Q4: `(212) 555-0100` -> `212.555.0100`, `+1 212 555 0100`, ..."""
-        digits = "".join(ch for ch in phone if ch.isdigit())
-        area, exchange, line = digits[:3], digits[3:6], digits[6:]
-        return self.rng.choice(
-            (
-                f"{area}.{exchange}.{line}",
-                f"{area}-{exchange}-{line}",
-                f"+1 {area} {exchange} {line}",
-                f"+1{digits}",
-                digits,
-                f"1-{area}-{exchange}-{line}",
-            )
+STATE_NAMES = {s.code: s.name for s in US_STATES}
+
+
+def email_variant(rng: random.Random, email: str) -> str:
+    """Q1: `john.doe@example.com` -> `John.Doe@Example.com `, `JOHN.DOE@...`."""
+    kind = rng.randrange(4)
+    if kind == 0:
+        local, domain = email.split("@")
+        return f"{'.'.join(p.capitalize() for p in local.split('.'))}@{domain.capitalize()}"
+    if kind == 1:
+        return email.upper()
+    if kind == 2:
+        return f"{email} "
+    return f" {email.capitalize()}"
+
+
+def phone_variant(rng: random.Random, phone: str) -> str:
+    """Q4: `(212) 555-0100` -> `212.555.0100`, `+1 212 555 0100`, ..."""
+    digits = "".join(ch for ch in phone if ch.isdigit())[-10:]  # drop a +1 country code
+    area, exchange, line = digits[:3], digits[3:6], digits[6:]
+    return rng.choice(
+        (
+            f"{area}.{exchange}.{line}",
+            f"{area}-{exchange}-{line}",
+            f"+1 {area} {exchange} {line}",
+            f"+1{digits}",
+            digits,
+            f"1-{area}-{exchange}-{line}",
         )
+    )
 
-    def _sku_variant(self, sku: str) -> str:
-        """Q5: `CK-1001` -> `ck-1001`, ` CK-1001`, `CK1001`, `CK-1001 `."""
-        return self.rng.choice((sku.lower(), f" {sku}", sku.replace("-", ""), f"{sku} "))
 
-    def _state_variant(self, code: str) -> str:
-        """Q12: `CA` -> `California`, `california`, `Ca`, `ca` or an invalid value."""
-        kind = self.rng.choices(BAD_STATE_KINDS, BAD_STATE_WEIGHTS)[0]
-        name = self._state_names[code]
-        if kind == "name":
-            return name
-        if kind == "lower_name":
-            return name.lower()
-        if kind == "title_code":
-            return code.capitalize()
-        if kind == "lower_code":
-            return code.lower()
-        return self.rng.choice(INVALID_STATES)
+def sku_variant(rng: random.Random, sku: str) -> str:
+    """Q5: `CK-1001` -> `ck-1001`, ` CK-1001`, `CK1001`, `CK-1001 `."""
+    return rng.choice((sku.lower(), f" {sku}", sku.replace("-", ""), f"{sku} "))
+
+
+def state_variant(rng: random.Random, code: str) -> str:
+    """Q12: `CA` -> `California`, `california`, `Ca`, `ca` or an invalid value."""
+    kind = rng.choices(BAD_STATE_KINDS, BAD_STATE_WEIGHTS)[0]
+    name = STATE_NAMES[code]
+    if kind == "name":
+        return name
+    if kind == "lower_name":
+        return name.lower()
+    if kind == "title_code":
+        return code.capitalize()
+    if kind == "lower_code":
+        return code.lower()
+    return rng.choice(INVALID_STATES)
 
 
 def _local(naive: datetime) -> datetime:

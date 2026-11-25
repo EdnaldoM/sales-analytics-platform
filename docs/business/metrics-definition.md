@@ -65,7 +65,7 @@ discount_amount_i               = item_discount_amount_i + allocated_order_disco
 Discounts                       = SUM(discount_amount) WHERE is_recognized_sale
 ```
 
-**Rounding rule.** Allocations are rounded to 2 decimals. The rounding residual (at most a few cents) is assigned to the item with the largest `item_base` in the order, so allocations **sum exactly** to the order coupon. A dbt test enforces this.
+**Rounding rule.** Allocations are rounded to 2 decimals. The rounding residual (at most a few cents) is assigned to the item with the largest `item_base` in the order (the first one by line number if several items are tied), so allocations **sum exactly** to the order coupon. A dbt test enforces this.
 
 ### 3.3. Net Sales (intermediate measure)
 

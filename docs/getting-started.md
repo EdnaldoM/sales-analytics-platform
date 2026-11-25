@@ -1,8 +1,6 @@
 # Getting Started
 
-> **Status:** Planned (Stage 1). Each section is completed and validated in the stage that implements it · **Last updated:** 2026-11-22
->
-> At this point the repository contains documentation only. There is nothing to run yet.
+> **Status:** Stage 2 implemented (local source systems and data generator). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-25
 
 ## 1. What runs where
 
@@ -71,10 +69,10 @@ git config user.email "<your personal or GitHub noreply email>"
 cp .env.example .env      # then fill in the values
 ```
 
-| Variable group | Example variables | Notes |
+| Variable group | Variables | Notes |
 |---|---|---|
-| PostgreSQL | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | Local only |
-| Data generator | `GENERATOR_SEED`, `GENERATOR_ANCHOR_DATE` | Same values reproduce the same data |
+| PostgreSQL | `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `GENERATOR_PASSWORD`, `AIRBYTE_READER_PASSWORD` | Local only. Passwords are applied when the data volume is created; after changing them, run `make reset` |
+| Data generator | `GENERATOR_SEED`, `GENERATOR_ANCHOR_DATE` | Empty = defaults (`42`, `2026-11-22`). Same values reproduce the same data |
 | Snowflake | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY_PATH` | Stage 3 |
 | Airbyte | `AIRBYTE_CLIENT_ID`, `AIRBYTE_CLIENT_SECRET` | Stage 3 |
 
@@ -98,20 +96,49 @@ Snowflake account identifier, CI and prod service users, private keys. Detailed 
 
 Power BI Desktop connects to Snowflake with the `ANALYST` role. Instructions added in Stage 8.
 
-## 7. Running the platform *(planned commands)*
+## 7. Running the platform
+
+### 7.1. Source systems *(Stage 2)*
+
+Run from the repository root, in the WSL terminal:
+
+```bash
+make setup      # uv installs Python 3.12 and the locked dependencies; creates .env if missing
+                # edit .env and replace every "change-me" password
+make up         # start PostgreSQL and wait until it is healthy
+make seed       # ~1.5 min: 24 months of history (deletes existing rows first)
+make stats      # row counts per table
+make simulate   # one run of new activity with real timestamps; repeat as often as you like
+make test       # automated tests (~5 s, no database needed)
+```
+
+| Command | What it does | Repeatable? |
+|---|---|---|
+| `make seed` | Empties the three databases and rebuilds the history up to the anchor date. Same seed + same anchor date = identical data | Yes. It **discards** everything added by `simulate` |
+| `make simulate` | One "tick" of activity: ~400 new orders, open orders and returns move to their next status, CRM segment changes, price and cost changes | Yes. Every run adds more. Not reproducible: it depends on the clock and the current data |
+| `make psql DB=ecommerce` | Opens psql in one database (`ecommerce`, `crm` or `erp`) | — |
+| `make reset` | Deletes the data volume and recreates empty databases (asks for confirmation) | — |
+
+Expected counts after `make seed` with the defaults:
+
+| Database | Table | Rows |
+|---|---|---|
+| ecommerce | `customers` · `orders` · `order_items` · `payments` | 50,000 · 400,000 · 1,004,208 · 434,234 |
+| ecommerce | `returns` · `return_items` | 22,609 · 37,995 |
+| crm | `customers` · `customer_contacts` | 48,115 · 83,749 |
+| erp | `product_categories` · `products` · `product_cost_history` | 40 · 2,000 · 4,917 |
+
+> **After Stage 3:** once Airbyte has synced the sources, a new `make seed` rewrites history with older `updated_at` values and reuses ids. Incremental syncs would miss it, so a re-seed must be followed by a full refresh of the Airbyte connections and of `RAW`.
+
+### 7.2. Planned commands
 
 | Step | Command | Stage |
 |---|---|---|
-| Install Python and dependencies | `make setup` | 2 |
-| Start PostgreSQL | `make up` | 2 |
-| Generate historical data | `make seed` | 2 |
-| Generate incremental activity | `make simulate` | 2 |
 | Install / start Airbyte | `make airbyte-up` | 3 |
 | Apply Airbyte configuration | `make airbyte-apply` | 3 |
 | Run dbt (development) | `make dbt-build` | 4 |
 | Start Airflow | `make airflow-up` | 6 |
 | Deploy a released Airflow image | `make deploy VERSION=vX.Y.Z` | 7 |
-| Reset all local state | `make reset` | 2 |
 | List all commands | `make help` | 2 |
 
 ## 8. Clean-clone acceptance test
@@ -123,7 +150,7 @@ The project is considered **reproducible** only after this checklist passes on t
 | CC-01 | Clone the repository and configure the local Git identity | Clone succeeds; `git config user.email` shows the personal email |
 | CC-02 | Copy `.env.example` → `.env` and fill in the values | No other files needed outside Git (except private keys) |
 | CC-03 | `make setup` | uv installs the pinned Python and dependencies from `uv.lock` |
-| CC-04 | `make up` + `make seed` | PostgreSQL healthy; row counts match the documented volumes for the default seed |
+| CC-04 | `make up` + `make seed` + `make test` | PostgreSQL healthy; row counts match [section 7.1](#71-source-systems-stage-2); all tests pass |
 | CC-05 | Airbyte installed and configuration applied | Sources, destination and connections created from versioned configuration |
 | CC-06 | Run an Airbyte sync | Rows in `RAW`; counts match PostgreSQL |
 | CC-07 | `make dbt-build` (dev target) | All models and tests pass |
@@ -137,3 +164,11 @@ Results are recorded in [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md) and stored a
 ## 9. Troubleshooting
 
 Known issues and fixes are added here as they are found during implementation.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `make up` fails with "port is already allocated" | Another PostgreSQL (or old project container) uses port 5432 | Stop it (`docker ps`, then `docker stop <name>`), or set another `POSTGRES_PORT` in `.env` |
+| `password authentication failed` after editing `.env` | Passwords are applied only when the volume is created | `make reset` (deletes the data), then `make seed` |
+| Containers from other projects start again after `wsl --shutdown` | Their restart policy is `always` | `docker update --restart=no <name>` and `docker stop <name>` |
+| `Missing .env` | `.env` is not versioned | `make setup`, then edit the passwords |
+| PostgreSQL 18 ignores a volume mounted at `/var/lib/postgresql/data` | PostgreSQL 18+ images keep data in `/var/lib/postgresql/<major>/docker` | The Compose file mounts the volume at `/var/lib/postgresql` (already done) |

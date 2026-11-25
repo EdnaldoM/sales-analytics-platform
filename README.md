@@ -2,7 +2,7 @@
 
 An end-to-end **Modern Data Stack** learning project: from synthetic operational data to a governed, tested and orchestrated analytics platform, built around one business metric, **Net Revenue**.
 
-> **Project status:** Stage 1 of 8 completed: business definition, data modeling and architecture (documentation only). See [Roadmap](#roadmap) and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+> **Project status:** Stage 2 of 8 completed: documentation, plus synthetic source systems in PostgreSQL with a Python data generator. See [Roadmap](#roadmap) and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
 >
 > Cedar & Co. is a **fictional company**. All data is synthetic, generated with Python and Faker.
 
@@ -160,10 +160,14 @@ sales-analytics-platform/
 │   ├── modernization/         # legacy ETL migration study
 │   ├── decisions/             # Architecture Decision Records (ADRs)
 │   └── diagrams/              # editable diagrams (.drawio.svg)
+├── Makefile                   # command entry point (make help)
+├── pyproject.toml, uv.lock    # Python dependencies (uv)
+├── data_generator/            # Stage 2: synthetic source data (seed + simulate)
+├── tests/                     # Stage 2: automated tests (pytest)
+├── infrastructure/postgres/   # Stage 2: PostgreSQL container and init scripts
 │
 │   # planned (added stage by stage)
-├── data_generator/            # Stage 2: Python + Faker
-├── infrastructure/            # Stage 2–3: PostgreSQL (Docker), Snowflake SQL scripts
+├── infrastructure/snowflake/  # Stage 3: Snowflake SQL scripts
 ├── airbyte/                   # Stage 3: Airbyte configuration as code
 ├── dbt/                       # Stage 4: dbt project
 ├── airflow/                   # Stage 6: Dockerfile, Compose, DAGs
@@ -190,8 +194,8 @@ Every significant decision is recorded as an ADR with its context, alternatives 
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Business definition, requirements, data modeling, architecture | ✅ Done |
-| 2 | Data generation (Python + PostgreSQL) | Next |
-| 3 | Snowflake setup and Airbyte ingestion | Planned |
+| 2 | Data generation (Python + PostgreSQL) | ✅ Done |
+| 3 | Snowflake setup and Airbyte ingestion | Next |
 | 4 | dbt transformations and modeling | Planned |
 | 5 | Governance and security | Planned |
 | 6 | Airflow orchestration | Planned |
