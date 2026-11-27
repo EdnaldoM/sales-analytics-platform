@@ -219,11 +219,22 @@ Expected counts after `make seed` with the defaults:
 
 > **After Stage 3:** once Airbyte has synced the sources, a new `make seed` rewrites history with older `updated_at` values and reuses ids. Incremental syncs would miss it, so a re-seed must be followed by a full refresh of the Airbyte connections and of `RAW`.
 
-### 7.2. Planned commands
+### 7.2. Airbyte *(Stage 3)*
+
+Airbyte runs in a local Kubernetes cluster that `abctl` creates inside a single Docker container (`airbyte-abctl-control-plane`, a [kind](https://kind.sigs.k8s.io/) cluster). The version is pinned in the `Makefile` (`AIRBYTE_CHART_VERSION`).
+
+```bash
+make airbyte-up            # first run: installs Airbyte (~20 min, ~10 GB of images); later runs: starts it
+make airbyte-credentials   # login password and API client id/secret (do not share them)
+make airbyte-down          # stop it when not in use: it takes ~5 GB of RAM
+```
+
+Web UI: http://localhost:8000. Airbyte reaches PostgreSQL as **`sources-postgres:5432`**: `make up` and `make airbyte-up` connect the PostgreSQL container to the `kind` Docker network under that name.
+
+### 7.3. Planned commands
 
 | Step | Command | Stage |
 |---|---|---|
-| Install / start Airbyte | `make airbyte-up` | 3 |
 | Apply Airbyte configuration | `make airbyte-apply` | 3 |
 | Run dbt (development) | `make dbt-build` | 4 |
 | Start Airflow | `make airflow-up` | 6 |
@@ -260,4 +271,6 @@ Known issues and fixes are added here as they are found during implementation.
 | `password authentication failed` after editing `.env` | Passwords are applied only when the volume is created | `make reset` (deletes the data), then `make seed` |
 | Containers from other projects start again after `wsl --shutdown` | Their restart policy is `always` | `docker update --restart=no <name>` and `docker stop <name>` |
 | `Missing .env` | `.env` is not versioned | `make setup`, then edit the passwords |
+| Machine slow while Airbyte runs | Airbyte uses ~5 GB of RAM and much CPU during start-up; WSL keeps memory it has used | `make airbyte-down` when not in use; `wsl --shutdown` (PowerShell) returns all memory to Windows |
+| Airbyte source check fails: host `sources-postgres` not found | PostgreSQL was recreated after Airbyte started and is not on the `kind` network | `make up` (reconnects it) |
 | PostgreSQL 18 ignores a volume mounted at `/var/lib/postgresql/data` | PostgreSQL 18+ images keep data in `/var/lib/postgresql/<major>/docker` | The Compose file mounts the volume at `/var/lib/postgresql` (already done) |
