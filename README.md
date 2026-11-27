@@ -142,7 +142,14 @@ Versions are pinned per component as it is implemented: see [PROJECT_CONTEXT.md]
 
 ## Getting started
 
-Nothing to run yet: the repository currently contains the design documentation. Prerequisites, setup steps and the clean-clone acceptance test are in [docs/getting-started.md](docs/getting-started.md).
+Requires WSL2 (Ubuntu), Git, Make, Docker and uv. Installation commands, tested versions and every step for a new machine are in [docs/getting-started.md](docs/getting-started.md#quick-start-new-machine).
+
+```bash
+make setup    # Python + dependencies into .venv; creates .env (then replace every "change-me")
+make up       # start the source databases (PostgreSQL in Docker)
+make seed     # generate 24 months of history
+make help     # list all commands
+```
 
 ## Project structure
 
