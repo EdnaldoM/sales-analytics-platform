@@ -253,7 +253,7 @@ This is the core technical challenge of the transformation layer. Details are va
 |---|---|
 | Strategy | `merge` on the fact's `unique_key`: new rows are inserted, changed rows are updated |
 | Change detection | A row is reprocessed when **any** of its sources changed. For `fct_sales`: the order item **or its order** (a cancellation changes `orders`, not `order_items`). For `fct_returns`: the return item **or its return**. |
-| Watermark column | **Ingestion timestamp** (`_airbyte_extracted_at`), not the business `updated_at`. It reflects when data *arrived in the warehouse*, so records that arrive late are still picked up *(to be validated in Stage 3)*. |
+| Watermark column | **Ingestion timestamp** (`_airbyte_extracted_at`), not the business `updated_at`. It reflects when data *arrived in the warehouse*, so records that arrive late are still picked up. Validated in Stage 3 ([ADR-0016](../decisions/0016-airbyte-ingestion-configuration.md)): rows re-read by Airbyte on cursor ties also get a new value and are merged again, with the same result. |
 | Lookback window | Reprocess everything ingested in the last **3 days** before the current watermark. Safety margin for partial loads and retries. |
 | Idempotency | Running the same model twice gives the same result: `merge` updates instead of duplicating, and keys are deterministic |
 | Late-arriving data | A status change or return weeks after the order arrives with a new ingestion timestamp and is merged into the existing row |

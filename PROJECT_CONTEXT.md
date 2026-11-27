@@ -2,7 +2,7 @@
 
 > Living document that keeps the technical context of the project across work sessions. **Updated at the end of every stage.**
 >
-> **Current stage:** 3 (Snowflake + Airbyte) · **Status:** Planning · **Last completed:** Stage 2 (`v0.2.0`) · **Last updated:** 2026-11-25
+> **Current stage:** 4 (dbt) · **Status:** Planning · **Last completed:** Stage 3 (`v0.3.0`) · **Last updated:** 2026-11-27
 
 ## 1. Current architecture (summary)
 
@@ -80,13 +80,26 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | D-42 | `make simulate`: one "tick" per run with real timestamps (database defaults and triggers), three independent transactions, same quality issues as the history; not reproducible by design | `data_generator/simulate.py` |
 | D-43 | Automated tests run on a small in-memory dataset, without a database: business rules on clean data, structural rules on data with issues | `tests/` |
 
+### 2.5. Stage 3: Snowflake + Airbyte
+
+| # | Decision | Reference |
+|---|---|---|
+| D-44 | Airbyte installed with `abctl` v0.30.4, chart/platform **2.6.0** pinned in the `Makefile` (`AIRBYTE_CHART_VERSION`) | `Makefile` |
+| D-45 | Snowflake setup SQL run by the administrator in Snowsight (not Snowflake CLI); 5 ordered, idempotent scripts + read-only checks | [infrastructure/snowflake/](infrastructure/snowflake/README.md) |
+| D-46 | `AIRBYTE_SVC`: `TYPE = SERVICE`, key-pair authentication (unencrypted PKCS#8, `chmod 600`, in `~/.snowflake/keys/`), role `LOADER`. dbt users follow the same pattern (Stages 4 and 7) | `05_users.sql` |
+| D-47 | `RAW` schemas `ECOMMERCE`, `CRM`, `ERP`, `AIRBYTE_INTERNAL` created by the setup script and owned by `LOADER`; `LOADER` also has `CREATE SCHEMA` on `RAW` | `04_databases.sql` |
+| D-48 | Airbyte reaches PostgreSQL through the `kind` Docker network as `sources-postgres:5432`; the published port stays bound to `127.0.0.1` | `Makefile` (`airbyte-network`) |
+| D-49 | Account resource monitor: 20 credits per month (notify 50% and 75%, suspend 100%, suspend immediately 110%); warehouses X-Small, auto-suspend 60 s, statement timeout 1 h | `01_resource_monitor.sql`, `03_warehouses.sql` |
+| D-50 | Sync mode *Incremental · Append + Deduped* (cursor `updated_at`, table primary key); dbt reads `RAW.<SYSTEM>.<TABLE>`; watermark `_AIRBYTE_EXTRACTED_AT`; Airbyte configured with Terraform; Airbyte kept, dlt documented as alternative (P-01, P-02, P-03, P-11) | [ADR-0016](docs/decisions/0016-airbyte-ingestion-configuration.md) |
+| D-51 | Snowflake destination: `NUMBER(38,9)` for decimals and `trim_space = false` (connector defaults are `FLOAT` and `true`); internal schema `AIRBYTE_INTERNAL`; manual schedule until Stage 6; new source columns propagated | `infrastructure/airbyte/main.tf` |
+
 ## 3. Pending decisions
 
 | # | Topic | Stage | Notes |
 |---|---|---|---|
-| P-01 | Airbyte destination sync mode (*Append + Deduped* vs *Append*) and which Airbyte tables are the dbt sources | 3 | Validate the connector's behavior first |
-| P-02 | Airbyte configuration as code: API scripts vs Terraform provider | 3 | |
-| P-03 | Incremental watermark: `_airbyte_extracted_at` vs source `updated_at` (current design: ingestion timestamp) | 3–4 | Validate column behavior |
+| ~~P-01~~ | ~~Airbyte destination sync mode and dbt source tables~~ | — | Resolved: Append + Deduped, final tables (D-50) |
+| ~~P-02~~ | ~~Airbyte configuration as code~~ | — | Resolved: Terraform provider (D-50) |
+| ~~P-03~~ | ~~Incremental watermark~~ | — | Resolved: `_AIRBYTE_EXTRACTED_AT` (D-50) |
 | P-04 | `on_schema_change` setting for incremental models | 4 | |
 | P-05 | Intermediate model materializations | 4 | |
 | P-06 | Grants mechanism: future grants vs dbt `grants` config; column vs tag-based masking | 5 | |
@@ -94,11 +107,11 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 | P-08 | SQLFluff templater (`dbt` vs `jinja`); adoption of pre-commit | 7 | |
 | P-09 | Confirm GitHub Free branch-protection and Actions-minutes rules for public repositories | 7 | |
 | ~~P-10~~ | ~~Repository license~~ | — | Resolved: MIT (D-32) |
-| P-11 | Ingestion tool: keep Airbyte (decided) or document dlt as the lightweight alternative in the Stage 3 ADR | 3 | Airbyte stays unless a new decision is approved |
+| ~~P-11~~ | ~~Ingestion tool~~ | — | Resolved: Airbyte kept, dlt documented in ADR-0016 (D-50) |
 
 ## 4. Repository structure
 
-**Current (Stage 2):**
+**Current (Stage 3):**
 
 ```text
 .
@@ -109,6 +122,8 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
 ├── Makefile                 make help
 ├── pyproject.toml · uv.lock
 ├── infrastructure/postgres/ compose.yaml + init/ (databases, roles, tables, grants)
+├── infrastructure/snowflake/ README + setup/ (01–05) + checks/ (setup_check, row_counts)
+├── infrastructure/airbyte/  Terraform: versions · variables · main · outputs + .terraform.lock.hcl + tf.sh
 ├── data_generator/          cli · config · catalog · records · timeutils · reference · orders
 │                            quality · simulate · seed · db
 ├── tests/                   conftest + test_money · test_determinism · test_invariants
@@ -120,7 +135,7 @@ Details: [docs/architecture/architecture-overview.md](docs/architecture/architec
     ├── governance/      data-governance.md
     ├── dataops/         dataops-strategy.md
     ├── modernization/   legacy-migration.md
-    ├── decisions/       README.md + ADR 0001–0015
+    ├── decisions/       README.md + ADR 0001–0016
     └── diagrams/        architecture-overview.drawio.svg
 ```
 
@@ -137,7 +152,10 @@ Versions are chosen and pinned in each stage after checking the official documen
 | PostgreSQL image | `postgres:18.7` | Debian trixie based |
 | Faker · psycopg[binary] | 40.63.0 · 3.3.9 | Group `generator`, locked in `uv.lock` |
 | pytest · ruff | 9.2.0 · 0.17.6 | Group `dev`, locked in `uv.lock` |
-| Airbyte (`abctl`, platform, connectors) | TBD (Stage 3) | Snowflake destination ≥ 5.x requires key pair or PAT |
+| Airbyte `abctl` · platform (chart) | v0.30.4 · 2.6.0 | Local kind cluster; ingress-nginx 4.15.1 |
+| Airbyte connectors | source-postgres 3.8.13 · destination-snowflake 5.2.3 | Pinned in the Terraform data sources; destination ≥ 5.x requires key pair or PAT |
+| Terraform · provider `airbytehq/airbyte` | 1.17.2 (Docker image `hashicorp/terraform`) · 1.3.3 | Provider locked in `.terraform.lock.hcl` |
+| Snowflake | Enterprise trial, AWS US East (N. Virginia) | Account created 2026-11-27 |
 | dbt Core / dbt-snowflake | TBD (Stage 4) | dbt-snowflake ≥ 1.10.6 |
 | Apache Airflow | TBD (Stage 6) | 3.x; Airbyte provider ≥ 6.x |
 | Power BI Desktop | TBD (Stage 8) | |
@@ -150,7 +168,7 @@ Versions are chosen and pinned in each stage after checking the official documen
 | `rlespinasse/drawio-desktop-headless` (Docker) | v1.78.0 | Export `.drawio.svg` (run with `--shm-size=1g`) |
 | Simple Icons | 16.38.1 | Technology logos |
 
-**Development machine (machine 1):** Windows + WSL2 Ubuntu 24.04, 16 GB RAM (WSL limited to 10 GB by `.wslconfig`; 7.6 GiB by default), 12 CPUs, Docker Engine 29.4.2 (native in WSL), Docker Compose v5.1.3, Git 2.43.0, GNU Make 4.3, Python 3.12.3 (system). **Machine 2:** Windows + WSL2, 24 GB RAM.
+**Development machine (machine 1):** Windows + WSL2 Ubuntu 24.04, 16 GB RAM (WSL limited to 12 GB by `.wslconfig`, ~11.7 GiB visible; 7.6 GiB by default), 12 CPUs, Docker Engine 29.4.2 (native in WSL), Docker Compose v5.1.3, Git 2.43.0, GNU Make 4.3, Python 3.12.3 (system). **Machine 2:** Windows + WSL2, 24 GB RAM.
 
 ## 6. Implementation status
 
@@ -158,7 +176,7 @@ Versions are chosen and pinned in each stage after checking the official documen
 |---|---|---|
 | 1. Business, modeling, architecture | ✅ Done | `v0.1.0` |
 | 2. Data generation | ✅ Done | `v0.2.0` |
-| 3. Snowflake + Airbyte | Not started | |
+| 3. Snowflake + Airbyte | ✅ Done | `v0.3.0` |
 | 4. dbt | Not started | |
 | 5. Governance | Not started | |
 | 6. Airflow | Not started | |
@@ -175,7 +193,9 @@ Commits are executed by the project owner. This table records them after confirm
 | 2026-11-23 | `e966cd2` | 1 | `docs: add MIT license (#1)` |
 | 2026-11-23 | `e0ce9c8` | 2 | `build: local infrastructure for source systems (#2)` (PR A, squash) |
 | 2026-11-24 | `6d47bee` | 2 | `feat: synthetic data generator for source systems (#3)` (PR B, squash: reference data, orders, quality issues, tests) |
-| 2026-11-25 | PR C | 2 | `feat(data-generator): simulate incremental source activity` + `docs: record stage 2 results` (tag `v0.2.0`) |
+| 2026-11-25 | `8d2c900` | 2 | `feat: source activity simulation and stage 2 docs (#4)` (tag `v0.2.0`) |
+| 2026-11-27 | `91103f3` | 2 | `docs: add installation steps, tested versions and quick start (#5)` |
+| 2026-11-27 | PR #6 | 3 | Snowflake setup scripts, Airbyte install, Airbyte configuration as code, stage 3 docs (tag `v0.3.0`) |
 
 ## 8. Tests and validations executed
 
@@ -191,13 +211,19 @@ Commits are executed by the project owner. This table records them after confirm
 | 2026-11-24 | Quality issue rates vs plan (Q1 15.0%, Q2 30.0%, Q4 40.1%, Q5 2.99%, Q6 0.1%, Q7 0.5%, Q10 8/3/5%, Q11 459 rows, Q12 0.98%) | ✅ within plan |
 | 2026-11-24 | `make test`: 26 tests | ✅ all pass (~5 s) |
 | 2026-11-25 | `make simulate` × 9 after a seed: integrity checks above + no paid order without captured payment + one open cost row per product + valid cross-system references | ✅ 0 violations; 2–4 s per run |
+| 2026-11-27 | Snowflake setup: scripts 01–05 + `setup_check.sql` | ✅ grants match the access matrix; `AIRBYTE_SVC` is `SERVICE` with key pair, no password |
+| 2026-11-27 | Airbyte install (`abctl`, chart 2.6.0) and memory | ✅ ~20 min; ~4.7 GB RAM; `sources-postgres:5432` reachable from the cluster |
+| 2026-11-27 | Test connection `erp` in the web UI: *Append* vs *Append + Deduped* | ✅ Append duplicates on cursor ties (2,011 rows / 2,000 keys); Deduped keeps rows = keys after simulate and after an empty sync |
+| 2026-11-27 | `make airbyte-apply` then `make airbyte-plan` | ✅ 7 resources created; "No changes" |
+| 2026-11-27 | Full load, 3 connections: counts `RAW` vs PostgreSQL (11 tables); money columns not `FLOAT`; SKUs with spaces kept | ✅ identical counts; 0 `FLOAT`; 14,916 SKUs with spaces (Q6 preserved) |
+| 2026-11-27 | `make simulate` + incremental sync of the 3 connections (`row_counts.sql` vs `make stats`) | ✅ identical counts, `TOTAL_ROWS = DISTINCT_KEYS` on all 11 tables |
 
 ## 9. Known issues and observations
 
 | # | Observation | Impact | Action |
 |---|---|---|---|
 | K-01 | Machine 1 has Docker images from previous projects (Airbyte 2.1.0, several Airflow images, `postgres:14`) | Possible port conflicts (8000, 8080, 5432) or an existing `abctl` installation | Check at Stages 2–3 before starting services |
-| K-02 | WSL on machine 1 is limited to 10 GB | May be tight for Airbyte + Airflow together | Check memory before Stage 3; raise to 12 GB if needed |
+| K-02 | WSL on machine 1 raised from 10 to 12 GB at Stage 3 | Airbyte uses ~4.7 GB; with Airflow (Stage 6) it may be tight | Stop Airbyte when not in use; measure again at Stage 6 |
 | K-03 | Global Git identity on machine 1 is not the personal one | Wrong author on commits if the local config is missing | Repository-local `user.email` configured; repeat after every clone |
 | K-04 | draw.io SVG export is ~1 MB (PNG fallbacks for HTML labels) | Larger file in Git | Accepted |
 | K-05 | dbt and Power BI logos are not in Simple Icons | Diagram uses brand-colored labels | Accepted |
@@ -205,17 +231,21 @@ Commits are executed by the project owner. This table records them after confirm
 | K-07 | Default anchor date (2026-11-22) is in the past | No activity between the anchor and the first `make simulate` | Accepted: a realistic gap; or seed with `ANCHOR=<yesterday>` |
 | K-08 | Simplifications in the synthetic data: state sales tax rates are approximate base rates; city names come from Faker and do not match the state | None for the analysis (region uses the state only) | Accepted, documented |
 | K-09 | `make simulate` is not reproducible (clock and current data) | Results differ between runs and machines | By design; `--seed` fixes only the random choices |
+| K-10 | Airbyte re-reads rows equal to the last cursor value; one simulate transaction gives many rows the same `updated_at` | A few rows (and all 40 categories) are re-sent on every sync | Harmless with Append + Deduped; dbt merges them again (ADR-0016) |
+| K-11 | Terraform provider `airbytehq/airbyte` 1.3.3 on a self-managed Airbyte: the default token path returns the web UI (HTML); `cron_time_zone` is unknown after apply when not set | `failed to decode token response`; connections marked tainted | Workarounds in `infrastructure/airbyte/versions.tf` (`token_url`) and `main.tf` (`cron_time_zone = "UTC"`). Re-check when upgrading the provider |
+| K-12 | Airbyte login email is `[not set]` after `abctl local install` | Confusing first login | `abctl local credentials --email <email>` |
+| K-13 | Airbyte makes the machine slow (CPU at start-up, ~4.7 GB RAM) | Slower Windows while it runs | `make airbyte-down`; `wsl --shutdown` returns memory to Windows (getting-started, troubleshooting) |
 
 ## 10. Next activities
 
-**Stage 3: Snowflake + Airbyte.** The plan is presented for approval before any implementation:
+**Stage 4: dbt.** The plan is presented for approval before any implementation:
 
-1. Check machine resources (K-01, K-02): old Airbyte images, ports 8000/8080, WSL memory.
-2. Create the Snowflake **Enterprise** trial with the personal email (D-16).
-3. Versioned, idempotent setup SQL: resource monitor, warehouses, databases, roles, users, grants (D-17, D-18); key-pair authentication.
-4. Airbyte with `abctl` (pinned version); three PostgreSQL sources with the `airbyte_reader` role; Snowflake destination.
-5. Connections with cursor-based incremental sync on `updated_at` (D-20); resolve P-01, P-02, P-03; record the ingestion-tool choice (P-11).
-6. Validation: row counts PostgreSQL vs `RAW`; a `make simulate` run followed by an incremental sync picks up inserts and updates.
+1. dbt Core + dbt-snowflake (≥ 1.10.6) in the uv project; profiles for dev (`ANALYTICS_DEV`, role `TRANSFORMER`) with key-pair authentication for the developer user.
+2. Snowflake grants for dbt: `TRANSFORMER` / `TRANSFORMER_PROD` read `RAW`, write `ANALYTICS_DEV` / `ANALYTICS` (extend `infrastructure/snowflake/`).
+3. Sources on `RAW.<SYSTEM>.<TABLE>` with freshness; staging models that clean quality issues Q1–Q12.
+4. Intermediate models (identity resolution, coupon allocation, cost lookup), CRM snapshot, Gold star schema (`fct_sales`, `fct_returns`, dimensions).
+5. Incremental facts with `merge` on `_AIRBYTE_EXTRACTED_AT` (data-model.md section 6); resolve P-04 and P-05.
+6. Tests: generic, singular (reconciliation with metrics-definition.md), unit tests for the money rules.
 
 ## 11. How to resume in a new session
 

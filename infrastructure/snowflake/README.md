@@ -22,6 +22,7 @@ Every script is **idempotent**: `CREATE ... IF NOT EXISTS` creates an object onl
 | 4 | [setup/04_databases.sql](setup/04_databases.sql) | `SYSADMIN` | `RAW` (+ schemas owned by `LOADER`), `ANALYTICS`, `ANALYTICS_DEV` |
 | 5 | [setup/05_users.sql](setup/05_users.sql) | `USERADMIN` | `AIRBYTE_SVC` (service user) |
 | — | [checks/setup_check.sql](checks/setup_check.sql) | `ACCOUNTADMIN` | Nothing: read-only checks with the expected results |
+| — | [checks/row_counts.sql](checks/row_counts.sql) | `SYSADMIN` | Nothing: rows and duplicates per `RAW` table after an Airbyte sync |
 
 ## Steps
 

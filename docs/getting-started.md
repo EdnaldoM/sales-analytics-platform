@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status:** Stage 2 implemented (local source systems and data generator). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-27
+> **Status:** Stages 2–3 implemented (local source systems, Snowflake setup, Airbyte ingestion). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-27
 
 ## Quick start (new machine)
 
@@ -55,7 +55,7 @@ Only these tools are installed on the machine. Everything else (Python itself, P
 | GitHub account with SSH key | — | — | 1 |
 | GNU Make | Any 4.x. Not always present on a fresh WSL install | 4.3 | 2 |
 | uv | 0.13+ (`required-version` in `pyproject.toml`). Installs Python 3.12 itself if missing | 0.13.9 | 2 |
-| `abctl` (Airbyte CLI) | Pinned version, documented in Stage 3 | — | 3 |
+| `abctl` (Airbyte CLI) | Install: `curl -LsfS https://get.airbyte.com \| bash -` ([guide](https://docs.airbyte.com/platform/deploying-airbyte/abctl)) | v0.30.4 | 3 |
 | Snowflake account | **Enterprise** edition trial | — | 3 |
 | Power BI Desktop | Windows only | — | 8 |
 
@@ -245,6 +245,10 @@ make airbyte-apply         # applies it after you type "yes"
 | Trim whitespace | Off | The connector default trims text; Bronze keeps source values (quality issues Q1, Q6) |
 
 The Terraform state (`terraform.tfstate`) stays in that folder, is git-ignored and contains secrets. If it is lost, `make airbyte-apply` creates duplicates: delete the old objects in the web UI first.
+
+**Run and check a sync** (manual until Stage 6): in the web UI, open each connection → **Sync now**. Then run [infrastructure/snowflake/checks/row_counts.sql](../infrastructure/snowflake/checks/row_counts.sql) in Snowsight and compare with `make stats`: the counts must match, and `TOTAL_ROWS = DISTINCT_KEYS` on every table.
+
+**After a `make seed`** (K-06): in each connection, menu **⋮** → **Refresh streams** → remove existing records, then sync.
 
 Web UI: http://localhost:8000. Airbyte reaches PostgreSQL as **`sources-postgres:5432`**: `make up` and `make airbyte-up` connect the PostgreSQL container to the `kind` Docker network under that name.
 

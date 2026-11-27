@@ -108,7 +108,7 @@ Release flow: [dataops-strategy.md](../dataops/dataops-strategy.md).
 | # | Risk | Impact | Mitigation | Status |
 |---|---|---|---|---|
 | R-01 | Snowflake trial expires (30 days or credits used) | Warehouse unavailable | Account created only at Stage 3; all configuration in versioned SQL, so a new account can be rebuilt in minutes; option to convert to on-demand with a low resource monitor cap | Accepted |
-| R-02 | Airbyte local footprint (~4 CPUs, ~8 GB RAM) on WSL2 | Slow machine; failure on the second computer | Raise the WSL memory limit (`.wslconfig`); do not run all services at once when not needed; minimum requirements documented | Open (validate at Stage 3) |
+| R-02 | Airbyte local footprint (~4 CPUs, ~8 GB RAM) on WSL2 | Slow machine; failure on the second computer | Raise the WSL memory limit (`.wslconfig`); do not run all services at once when not needed; minimum requirements documented | Validated in Stage 3: Airbyte uses ~4.7 GB with WSL at 12 GB; stop it when not in use (`make airbyte-down`) |
 | R-03 | Network between containers: Airbyte runs in a Kubernetes-in-Docker cluster and must reach PostgreSQL; Airflow must reach the Airbyte API | Connection failures | Use `host.docker.internal` / host gateway; document and test on both machines | Open (validate at Stages 3 and 6) |
 | R-04 | Power BI Service requires a work or school account | No cloud publishing; RLS testable only in Desktop | Power BI Desktop with PBIP format (versionable) | Accepted |
 | R-05 | "Production" runs on a developer machine | Not a real always-on server | Same artifacts as a cloud deployment (versioned image); cloud mapping documented ([ADR-0010](../decisions/0010-container-image-deployment-model.md)) | Accepted |
