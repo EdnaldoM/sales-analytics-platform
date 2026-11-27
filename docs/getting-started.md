@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status:** Stage 2 implemented (local source systems and data generator). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-27
+> **Status:** Stages 2–3 implemented (local source systems, Snowflake setup, Airbyte ingestion). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-27
 
 ## Quick start (new machine)
 
@@ -55,7 +55,7 @@ Only these tools are installed on the machine. Everything else (Python itself, P
 | GitHub account with SSH key | — | — | 1 |
 | GNU Make | Any 4.x. Not always present on a fresh WSL install | 4.3 | 2 |
 | uv | 0.13+ (`required-version` in `pyproject.toml`). Installs Python 3.12 itself if missing | 0.13.9 | 2 |
-| `abctl` (Airbyte CLI) | Pinned version, documented in Stage 3 | — | 3 |
+| `abctl` (Airbyte CLI) | Install: `curl -LsfS https://get.airbyte.com \| bash -` ([guide](https://docs.airbyte.com/platform/deploying-airbyte/abctl)) | v0.30.4 | 3 |
 | Snowflake account | **Enterprise** edition trial | — | 3 |
 | Power BI Desktop | Windows only | — | 8 |
 
@@ -164,8 +164,8 @@ openssl rand -hex 16      #    generates a random password; run once per passwor
 |---|---|---|
 | PostgreSQL | `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `GENERATOR_PASSWORD`, `AIRBYTE_READER_PASSWORD` | Local only. Passwords are applied when the data volume is created; after changing them, run `make reset` |
 | Data generator | `GENERATOR_SEED`, `GENERATOR_ANCHOR_DATE` | Empty = defaults (`42`, `2026-11-22`). Same values reproduce the same data |
-| Snowflake | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY_PATH` | Stage 3 |
-| Airbyte | `AIRBYTE_CLIENT_ID`, `AIRBYTE_CLIENT_SECRET` | Stage 3 |
+| Snowflake | `SNOWFLAKE_ACCOUNT` | Account identifier (`<orgname>-<accountname>`). Private keys stay in `~/.snowflake/keys/`, never in `.env` |
+| Airbyte | `AIRBYTE_WORKSPACE_ID`, `AIRBYTE_CLIENT_ID`, `AIRBYTE_CLIENT_SECRET` | Client id and secret: `make airbyte-credentials`. Workspace id: web UI URL (`/workspaces/<id>/...`) |
 
 `.env` is git-ignored. Never commit it.
 
@@ -173,11 +173,9 @@ openssl rand -hex 16      #    generates a random password; run once per passwor
 
 ### 6.1. Snowflake *(Stage 3)*
 
-1. Create a trial account at snowflake.com with a **personal email**. Choose **Enterprise** edition and AWS.
-2. Run the versioned setup scripts in order (resource monitor, warehouses, databases, roles, users, grants).
-3. Generate a key pair for each service user and for your developer user. Keep private keys outside the repository.
-
-Detailed instructions are added in Stage 3.
+1. Create a 30-day trial at [signup.snowflake.com](https://signup.snowflake.com) with a **personal email**: edition **Enterprise**, cloud **AWS**, region **US East (N. Virginia)**. Activate it from the email, create your admin user and set up MFA (required for web sign-in).
+2. Note the **account identifier** (`<orgname>-<accountname>`): in Snowsight, account menu (bottom left) → **Account** → **View account details**.
+3. Run the setup scripts, generate the `AIRBYTE_SVC` key pair and register its public key: step by step in [infrastructure/snowflake/README.md](../infrastructure/snowflake/README.md).
 
 ### 6.2. GitHub Actions secrets *(Stage 7)*
 
@@ -221,12 +219,43 @@ Expected counts after `make seed` with the defaults:
 
 > **After Stage 3:** once Airbyte has synced the sources, a new `make seed` rewrites history with older `updated_at` values and reuses ids. Incremental syncs would miss it, so a re-seed must be followed by a full refresh of the Airbyte connections and of `RAW`.
 
-### 7.2. Planned commands
+### 7.2. Airbyte *(Stage 3)*
+
+Airbyte runs in a local Kubernetes cluster that `abctl` creates inside a single Docker container (`airbyte-abctl-control-plane`, a [kind](https://kind.sigs.k8s.io/) cluster). The version is pinned in the `Makefile` (`AIRBYTE_CHART_VERSION`).
+
+```bash
+make airbyte-up            # first run: installs Airbyte (~20 min, ~10 GB of images); later runs: starts it
+make airbyte-credentials   # login password and API client id/secret (do not share them)
+make airbyte-down          # stop it when not in use: it takes ~5 GB of RAM
+```
+
+Sources, destination and connections are code in [infrastructure/airbyte/](../infrastructure/airbyte/) (Terraform, run from its Docker image: nothing to install):
+
+```bash
+make airbyte-plan          # shows what would be created, changed or deleted (changes nothing)
+make airbyte-apply         # applies it after you type "yes"
+```
+
+| Setting | Value | Why |
+|---|---|---|
+| Sync mode | Incremental · Append + Deduped, cursor `updated_at`, table primary key | One current row per key in `RAW`; rows re-read on cursor ties replace themselves |
+| Schedule | Manual | Airflow triggers syncs from Stage 6. Until then: **Sync now** in the web UI |
+| Destination schema | `RAW.ECOMMERCE`, `RAW.CRM`, `RAW.ERP` | One schema per source database |
+| Decimal type | `NUMBER(38,9)` | The connector default (`FLOAT`) is approximate |
+| Trim whitespace | Off | The connector default trims text; Bronze keeps source values (quality issues Q1, Q6) |
+
+The Terraform state (`terraform.tfstate`) stays in that folder, is git-ignored and contains secrets. If it is lost, `make airbyte-apply` creates duplicates: delete the old objects in the web UI first.
+
+**Run and check a sync** (manual until Stage 6): in the web UI, open each connection → **Sync now**. Then run [infrastructure/snowflake/checks/row_counts.sql](../infrastructure/snowflake/checks/row_counts.sql) in Snowsight and compare with `make stats`: the counts must match, and `TOTAL_ROWS = DISTINCT_KEYS` on every table.
+
+**After a `make seed`** (K-06): in each connection, menu **⋮** → **Refresh streams** → remove existing records, then sync.
+
+Web UI: http://localhost:8000. Airbyte reaches PostgreSQL as **`sources-postgres:5432`**: `make up` and `make airbyte-up` connect the PostgreSQL container to the `kind` Docker network under that name.
+
+### 7.3. Planned commands
 
 | Step | Command | Stage |
 |---|---|---|
-| Install / start Airbyte | `make airbyte-up` | 3 |
-| Apply Airbyte configuration | `make airbyte-apply` | 3 |
 | Run dbt (development) | `make dbt-build` | 4 |
 | Start Airflow | `make airflow-up` | 6 |
 | Deploy a released Airflow image | `make deploy VERSION=vX.Y.Z` | 7 |
@@ -262,4 +291,6 @@ Known issues and fixes are added here as they are found during implementation.
 | `password authentication failed` after editing `.env` | Passwords are applied only when the volume is created | `make reset` (deletes the data), then `make seed` |
 | Containers from other projects start again after `wsl --shutdown` | Their restart policy is `always` | `docker update --restart=no <name>` and `docker stop <name>` |
 | `Missing .env` | `.env` is not versioned | `make setup`, then edit the passwords |
+| Machine slow while Airbyte runs | Airbyte uses ~5 GB of RAM and much CPU during start-up; WSL keeps memory it has used | `make airbyte-down` when not in use; `wsl --shutdown` (PowerShell) returns all memory to Windows |
+| Airbyte source check fails: host `sources-postgres` not found | PostgreSQL was recreated after Airbyte started and is not on the `kind` network | `make up` (reconnects it) |
 | PostgreSQL 18 ignores a volume mounted at `/var/lib/postgresql/data` | PostgreSQL 18+ images keep data in `/var/lib/postgresql/<major>/docker` | The Compose file mounts the volume at `/var/lib/postgresql` (already done) |

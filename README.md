@@ -2,7 +2,7 @@
 
 An end-to-end **Modern Data Stack** learning project: from synthetic operational data to a governed, tested and orchestrated analytics platform, built around one business metric, **Net Revenue**.
 
-> **Project status:** Stage 2 of 8 completed: documentation, plus synthetic source systems in PostgreSQL with a Python data generator. See [Roadmap](#roadmap) and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+> **Project status:** Stage 3 of 8 completed: documentation, synthetic source systems in PostgreSQL, and incremental ingestion into Snowflake with Airbyte, all configured as code. See [Roadmap](#roadmap) and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
 >
 > Cedar & Co. is a **fictional company**. All data is synthetic, generated with Python and Faker.
 
@@ -172,10 +172,10 @@ sales-analytics-platform/
 ├── data_generator/            # Stage 2: synthetic source data (seed + simulate)
 ├── tests/                     # Stage 2: automated tests (pytest)
 ├── infrastructure/postgres/   # Stage 2: PostgreSQL container and init scripts
+├── infrastructure/snowflake/  # Stage 3: Snowflake account setup (versioned SQL)
+├── infrastructure/airbyte/    # Stage 3: Airbyte sources, destination, connections (Terraform)
 │
 │   # planned (added stage by stage)
-├── infrastructure/snowflake/  # Stage 3: Snowflake SQL scripts
-├── airbyte/                   # Stage 3: Airbyte configuration as code
 ├── dbt/                       # Stage 4: dbt project
 ├── airflow/                   # Stage 6: Dockerfile, Compose, DAGs
 ├── powerbi/                   # Stage 8: Power BI project (PBIP)
@@ -191,6 +191,7 @@ Every significant decision is recorded as an ADR with its context, alternatives 
 | Snowflake Enterprise instead of Databricks Free Edition | [0003](docs/decisions/0003-use-snowflake-enterprise-as-data-warehouse.md) |
 | Net Revenue recognition rules | [0004](docs/decisions/0004-net-revenue-recognition-rules.md) |
 | Cursor-based incremental ingestion instead of CDC | [0006](docs/decisions/0006-cursor-based-incremental-ingestion.md) |
+| Airbyte sync mode, watermark and configuration as code (Terraform) | [0016](docs/decisions/0016-airbyte-ingestion-configuration.md) |
 | Separate sales and returns facts | [0013](docs/decisions/0013-separate-sales-and-returns-facts.md) |
 | Container image deployment model | [0010](docs/decisions/0010-container-image-deployment-model.md) |
 
@@ -202,8 +203,8 @@ Every significant decision is recorded as an ADR with its context, alternatives 
 |---|---|---|
 | 1 | Business definition, requirements, data modeling, architecture | ✅ Done |
 | 2 | Data generation (Python + PostgreSQL) | ✅ Done |
-| 3 | Snowflake setup and Airbyte ingestion | Next |
-| 4 | dbt transformations and modeling | Planned |
+| 3 | Snowflake setup and Airbyte ingestion | ✅ Done |
+| 4 | dbt transformations and modeling | Next |
 | 5 | Governance and security | Planned |
 | 6 | Airflow orchestration | Planned |
 | 7 | CI/CD with GitHub Actions | Planned |

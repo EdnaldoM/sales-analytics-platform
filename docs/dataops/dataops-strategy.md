@@ -206,7 +206,7 @@ Needed when a logic change affects historical rows of an incremental model, or p
 |---|---|---|
 | PostgreSQL | `docker-compose.yml` + init SQL scripts | 2 |
 | Snowflake (warehouses, databases, roles, users, grants, policies) | Ordered, idempotent SQL scripts (`CREATE ... IF NOT EXISTS`, `CREATE OR ALTER`) | 3, 5 |
-| Airbyte (sources, destination, connections) | Scripts using the Airbyte API, or the Airbyte Terraform provider (decision pending, Stage 3) | 3 |
+| Airbyte (sources, destination, connections) | Airbyte Terraform provider, run from the Terraform Docker image ([ADR-0016](../decisions/0016-airbyte-ingestion-configuration.md)) | 3 |
 | dbt | dbt project | 4 |
 | Airflow | `Dockerfile` + `docker-compose.yml` + DAGs | 6 |
 | CI/CD | `.github/workflows/*.yml` | 7 |

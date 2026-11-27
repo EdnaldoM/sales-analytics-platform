@@ -20,6 +20,8 @@ Use **cursor-based incremental sync on `updated_at`** for every table. The sourc
 
 The destination sync mode (*Incremental | Append + Deduped* vs *Incremental | Append*) and the exact definition of the Bronze tables are **pending validation in Stage 3**, after observing the connector behavior.
 
+> **Update (2026-11-27):** resolved in [ADR-0016](0016-airbyte-ingestion-configuration.md): *Incremental · Append + Deduped*; dbt reads the final tables `RAW.<SYSTEM>.<TABLE>`.
+
 ## Alternatives considered
 
 | Alternative | Pros | Cons | Why not chosen |

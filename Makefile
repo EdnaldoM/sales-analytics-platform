@@ -14,12 +14,25 @@ GENERATOR := uv run --env-file $(ENV_FILE) python -m data_generator
 # Database used by `make psql`. Override on the command line: make psql DB=crm
 DB ?= postgres
 
+# Airbyte, installed by abctl (version: `abctl version`, see PROJECT_CONTEXT.md).
+# Chart versions: https://airbytehq.github.io/charts (chart X.Y.Z = Airbyte X.Y.Z)
+AIRBYTE_CHART_VERSION := 2.6.0
+AIRBYTE_PORT          := 8000
+# Docker container that runs the kind cluster created by abctl
+AIRBYTE_NODE          := airbyte-abctl-control-plane
+# Host name of PostgreSQL as seen from Airbyte (also the default in infrastructure/airbyte/variables.tf)
+AIRBYTE_PG_HOST       := sources-postgres
+# Terraform for the Airbyte configuration, run from its Docker image
+TERRAFORM             := infrastructure/airbyte/tf.sh
+
 # Targets that are command names, not files
-.PHONY: help setup check-env up down ps logs psql reset seed simulate stats test lint format
+.PHONY: help setup check-env up down ps logs psql reset seed simulate stats test lint format \
+	airbyte-up airbyte-down airbyte-credentials airbyte-upgrade airbyte-network \
+	airbyte-plan airbyte-apply
 
 help: ## Show this list of commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-9s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------
 # Setup
@@ -40,6 +53,7 @@ check-env:
 # ---------------------------------------------------------------
 up: check-env ## Start PostgreSQL and wait until it is healthy
 	$(COMPOSE) up -d --wait
+	@$(MAKE) --no-print-directory airbyte-network
 
 down: check-env ## Stop and remove the container (the data volume is kept)
 	$(COMPOSE) down
@@ -70,6 +84,53 @@ simulate: up ## Add one run of new source activity (real timestamps). Options: O
 
 stats: check-env ## Show row counts per table in the source databases
 	$(GENERATOR) stats
+
+# ---------------------------------------------------------------
+# Airbyte (local, installed by abctl in a kind cluster)
+# ---------------------------------------------------------------
+airbyte-up: up ## Install Airbyte on the first run, start it afterwards (http://localhost:8000)
+	@if docker container inspect $(AIRBYTE_NODE) >/dev/null 2>&1; then \
+		docker start $(AIRBYTE_NODE) >/dev/null; \
+		echo "Airbyte started. The web UI takes 1-3 minutes to answer at http://localhost:$(AIRBYTE_PORT)"; \
+	else \
+		abctl local install --chart-version $(AIRBYTE_CHART_VERSION) --port $(AIRBYTE_PORT) --no-browser; \
+	fi
+	@$(MAKE) --no-print-directory airbyte-network
+
+airbyte-down: ## Stop Airbyte (configuration and sync history are kept)
+	docker stop $(AIRBYTE_NODE)
+
+airbyte-credentials: ## Show the Airbyte login (email, password) and API client id and secret
+	abctl local credentials
+
+airbyte-upgrade: ## Install or upgrade to AIRBYTE_CHART_VERSION (configuration is kept)
+	abctl local install --chart-version $(AIRBYTE_CHART_VERSION) --port $(AIRBYTE_PORT) --no-browser
+
+# Sources, destination and connections as code (Terraform in Docker, see tf.sh)
+airbyte-plan: check-env ## Show what Terraform would change in Airbyte (changes nothing)
+	$(TERRAFORM) init -input=false >/dev/null
+	$(TERRAFORM) plan
+
+airbyte-apply: check-env ## Create or update sources, destination and connections (asks for "yes")
+	$(TERRAFORM) init -input=false >/dev/null
+	$(TERRAFORM) apply
+
+# Internal helper: lets Airbyte reach PostgreSQL. Airbyte runs inside the kind
+# container, where "localhost" is that container, not this machine. The
+# PostgreSQL container joins kind's Docker network under the name in
+# AIRBYTE_PG_HOST. Its published port stays bound to 127.0.0.1.
+# Does nothing if Airbyte is not installed (no kind network) or PostgreSQL is down.
+airbyte-network:
+	@pg=$$($(COMPOSE) ps -q postgres 2>/dev/null); \
+	if [ -n "$$pg" ] && docker network inspect kind >/dev/null 2>&1; then \
+		if docker network inspect kind --format '{{range .Containers}}{{.Name}} {{end}}' \
+			| grep -qw "$$(docker inspect --format '{{.Name}}' $$pg | tr -d /)"; then \
+			: already connected; \
+		else \
+			docker network connect --alias $(AIRBYTE_PG_HOST) kind $$pg \
+				&& echo "PostgreSQL reachable from Airbyte as $(AIRBYTE_PG_HOST):5432"; \
+		fi; \
+	fi
 
 # ---------------------------------------------------------------
 # Code quality

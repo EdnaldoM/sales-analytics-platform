@@ -21,6 +21,7 @@ An ADR records **one significant decision**: the context that motivated it, the 
 | [0013](0013-separate-sales-and-returns-facts.md) | Separate sales and returns facts | Accepted | 2026-11-21 |
 | [0014](0014-customer-history-via-source-snapshot.md) | Customer history via a snapshot of the CRM source | Accepted | 2026-11-21 |
 | [0015](0015-skip-pipeline-when-no-new-data.md) | Skip the pipeline when there is no new source data | Accepted | 2026-11-22 |
+| [0016](0016-airbyte-ingestion-configuration.md) | Airbyte ingestion configuration | Accepted | 2026-11-27 |
 
 ## Statuses
 
