@@ -164,8 +164,8 @@ openssl rand -hex 16      #    generates a random password; run once per passwor
 |---|---|---|
 | PostgreSQL | `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `GENERATOR_PASSWORD`, `AIRBYTE_READER_PASSWORD` | Local only. Passwords are applied when the data volume is created; after changing them, run `make reset` |
 | Data generator | `GENERATOR_SEED`, `GENERATOR_ANCHOR_DATE` | Empty = defaults (`42`, `2026-11-22`). Same values reproduce the same data |
-| Snowflake | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY_PATH` | Stage 3 |
-| Airbyte | `AIRBYTE_CLIENT_ID`, `AIRBYTE_CLIENT_SECRET` | Stage 3 |
+| Snowflake | `SNOWFLAKE_ACCOUNT` | Account identifier (`<orgname>-<accountname>`). Private keys stay in `~/.snowflake/keys/`, never in `.env` |
+| Airbyte | `AIRBYTE_WORKSPACE_ID`, `AIRBYTE_CLIENT_ID`, `AIRBYTE_CLIENT_SECRET` | Client id and secret: `make airbyte-credentials`. Workspace id: web UI URL (`/workspaces/<id>/...`) |
 
 `.env` is git-ignored. Never commit it.
 
@@ -229,13 +229,29 @@ make airbyte-credentials   # login password and API client id/secret (do not sha
 make airbyte-down          # stop it when not in use: it takes ~5 GB of RAM
 ```
 
+Sources, destination and connections are code in [infrastructure/airbyte/](../infrastructure/airbyte/) (Terraform, run from its Docker image: nothing to install):
+
+```bash
+make airbyte-plan          # shows what would be created, changed or deleted (changes nothing)
+make airbyte-apply         # applies it after you type "yes"
+```
+
+| Setting | Value | Why |
+|---|---|---|
+| Sync mode | Incremental · Append + Deduped, cursor `updated_at`, table primary key | One current row per key in `RAW`; rows re-read on cursor ties replace themselves |
+| Schedule | Manual | Airflow triggers syncs from Stage 6. Until then: **Sync now** in the web UI |
+| Destination schema | `RAW.ECOMMERCE`, `RAW.CRM`, `RAW.ERP` | One schema per source database |
+| Decimal type | `NUMBER(38,9)` | The connector default (`FLOAT`) is approximate |
+| Trim whitespace | Off | The connector default trims text; Bronze keeps source values (quality issues Q1, Q6) |
+
+The Terraform state (`terraform.tfstate`) stays in that folder, is git-ignored and contains secrets. If it is lost, `make airbyte-apply` creates duplicates: delete the old objects in the web UI first.
+
 Web UI: http://localhost:8000. Airbyte reaches PostgreSQL as **`sources-postgres:5432`**: `make up` and `make airbyte-up` connect the PostgreSQL container to the `kind` Docker network under that name.
 
 ### 7.3. Planned commands
 
 | Step | Command | Stage |
 |---|---|---|
-| Apply Airbyte configuration | `make airbyte-apply` | 3 |
 | Run dbt (development) | `make dbt-build` | 4 |
 | Start Airflow | `make airflow-up` | 6 |
 | Deploy a released Airflow image | `make deploy VERSION=vX.Y.Z` | 7 |

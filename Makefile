@@ -20,12 +20,15 @@ AIRBYTE_CHART_VERSION := 2.6.0
 AIRBYTE_PORT          := 8000
 # Docker container that runs the kind cluster created by abctl
 AIRBYTE_NODE          := airbyte-abctl-control-plane
-# Host name of PostgreSQL as seen from Airbyte (used in the source configuration)
+# Host name of PostgreSQL as seen from Airbyte (also the default in infrastructure/airbyte/variables.tf)
 AIRBYTE_PG_HOST       := sources-postgres
+# Terraform for the Airbyte configuration, run from its Docker image
+TERRAFORM             := infrastructure/airbyte/tf.sh
 
 # Targets that are command names, not files
 .PHONY: help setup check-env up down ps logs psql reset seed simulate stats test lint format \
-	airbyte-up airbyte-down airbyte-credentials airbyte-upgrade airbyte-network
+	airbyte-up airbyte-down airbyte-credentials airbyte-upgrade airbyte-network \
+	airbyte-plan airbyte-apply
 
 help: ## Show this list of commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -102,6 +105,15 @@ airbyte-credentials: ## Show the Airbyte login (email, password) and API client 
 
 airbyte-upgrade: ## Install or upgrade to AIRBYTE_CHART_VERSION (configuration is kept)
 	abctl local install --chart-version $(AIRBYTE_CHART_VERSION) --port $(AIRBYTE_PORT) --no-browser
+
+# Sources, destination and connections as code (Terraform in Docker, see tf.sh)
+airbyte-plan: check-env ## Show what Terraform would change in Airbyte (changes nothing)
+	$(TERRAFORM) init -input=false >/dev/null
+	$(TERRAFORM) plan
+
+airbyte-apply: check-env ## Create or update sources, destination and connections (asks for "yes")
+	$(TERRAFORM) init -input=false >/dev/null
+	$(TERRAFORM) apply
 
 # Internal helper: lets Airbyte reach PostgreSQL. Airbyte runs inside the kind
 # container, where "localhost" is that container, not this machine. The
