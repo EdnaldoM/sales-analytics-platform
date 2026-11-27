@@ -173,11 +173,9 @@ openssl rand -hex 16      #    generates a random password; run once per passwor
 
 ### 6.1. Snowflake *(Stage 3)*
 
-1. Create a trial account at snowflake.com with a **personal email**. Choose **Enterprise** edition and AWS.
-2. Run the versioned setup scripts in order (resource monitor, warehouses, databases, roles, users, grants).
-3. Generate a key pair for each service user and for your developer user. Keep private keys outside the repository.
-
-Detailed instructions are added in Stage 3.
+1. Create a 30-day trial at [signup.snowflake.com](https://signup.snowflake.com) with a **personal email**: edition **Enterprise**, cloud **AWS**, region **US East (N. Virginia)**. Activate it from the email, create your admin user and set up MFA (required for web sign-in).
+2. Note the **account identifier** (`<orgname>-<accountname>`): in Snowsight, account menu (bottom left) → **Account** → **View account details**.
+3. Run the setup scripts, generate the `AIRBYTE_SVC` key pair and register its public key: step by step in [infrastructure/snowflake/README.md](../infrastructure/snowflake/README.md).
 
 ### 6.2. GitHub Actions secrets *(Stage 7)*
 
