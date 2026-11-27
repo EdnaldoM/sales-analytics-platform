@@ -1,6 +1,33 @@
 # Getting Started
 
-> **Status:** Stage 2 implemented (local source systems and data generator). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-25
+> **Status:** Stage 2 implemented (local source systems and data generator). Later sections are completed and validated in the stage that implements them · **Last updated:** 2026-11-27
+
+## Quick start (new machine)
+
+Follow the sections in order. Each step links to its details.
+
+| # | Step | Where | Done once per… |
+|---|---|---|---|
+| 1 | Install WSL2 + Ubuntu, Git, Make, Docker Engine and uv | [2.1](#21-install-the-tools) | machine |
+| 2 | Give WSL enough memory (needed from Stage 3) | [3](#3-wsl-configuration) | machine |
+| 3 | Clone the repository and set the local Git identity | [4](#4-clone-the-repository) | clone |
+| 4 | `make setup`: installs Python + dependencies, creates `.env` | [5](#5-local-configuration-stage-2) | clone |
+| 5 | Edit `.env` and replace every `change-me` password | [5](#5-local-configuration-stage-2) | clone |
+| 6 | `make up` → `make seed` → `make stats` → `make test` | [7.1](#71-source-systems-stage-2) | clone |
+
+```bash
+# Steps 3–6, after the tools are installed
+cd ~
+git clone git@github.com:EdnaldoM/sales-analytics-platform.git
+cd sales-analytics-platform
+git config user.name  "<your name>"
+git config user.email "<your personal or GitHub noreply email>"
+make setup        # creates .env: edit it now and replace every "change-me"
+make up
+make seed
+make stats
+make test
+```
 
 ## 1. What runs where
 
@@ -17,18 +44,77 @@ Local services are fully defined in the repository and rebuilt from it. External
 
 ## 2. Prerequisites
 
-| Requirement | Version / note | Needed from stage |
-|---|---|---|
-| Windows 10/11 with **WSL2** and Ubuntu 24.04 | Tested environment. macOS/Linux should work but are not tested. | 2 |
-| **RAM available to WSL ≥ 12 GB** | Airbyte alone needs ~8 GB. See [section 3](#3-wsl-configuration) | 3 |
-| Docker Engine in WSL **or** Docker Desktop with WSL integration | Docker Compose v2+ | 2 |
-| Git | 2.40+ | 1 |
-| GitHub account with SSH key | — | 1 |
-| GNU Make | Pre-installed on Ubuntu (`make --version`) | 2 |
-| uv | Installs and pins Python itself | 2 |
-| `abctl` (Airbyte CLI) | Pinned version, documented in Stage 3 | 3 |
-| Snowflake account | **Enterprise** edition trial | 3 |
-| Power BI Desktop | Windows only | 8 |
+Only these tools are installed on the machine. Everything else (Python itself, Python packages, PostgreSQL, later Airbyte and Airflow) is installed by the project: Python packages into `.venv` by uv, services as Docker containers.
+
+| Requirement | Minimum / note | Tested version (machine 1) | Needed from stage |
+|---|---|---|---|
+| Windows 10/11 with **WSL2** and Ubuntu 24.04 | macOS/Linux should work but are not tested | Ubuntu 24.04 | 2 |
+| **RAM available to WSL ≥ 12 GB** | Airbyte alone needs ~8 GB. See [section 3](#3-wsl-configuration) | — | 3 |
+| Docker Engine in WSL **or** Docker Desktop with WSL integration | Docker Compose v2+ | Engine 29.4.2 · Compose v5.1.3 | 2 |
+| Git | 2.40+ | 2.43.0 | 1 |
+| GitHub account with SSH key | — | — | 1 |
+| GNU Make | Any 4.x. Not always present on a fresh WSL install | 4.3 | 2 |
+| uv | 0.13+ (`required-version` in `pyproject.toml`). Installs Python 3.12 itself if missing | 0.13.9 | 2 |
+| `abctl` (Airbyte CLI) | Pinned version, documented in Stage 3 | — | 3 |
+| Snowflake account | **Enterprise** edition trial | — | 3 |
+| Power BI Desktop | Windows only | — | 8 |
+
+### 2.1. Install the tools
+
+Commands from the official documentation. Run them once per machine; skip a tool if its version check already works.
+
+**WSL2 + Ubuntu** (PowerShell as administrator, then restart Windows if asked):
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+**Git and Make** (Ubuntu terminal):
+
+```bash
+sudo apt update
+sudo apt install -y git make
+git --version && make --version
+```
+
+**Docker Engine** ([official guide](https://docs.docker.com/engine/install/ubuntu/), apt repository method). Skip it if you use Docker Desktop with WSL integration instead.
+
+```bash
+# Add Docker's official GPG key
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+sudo apt update
+
+# Install Docker Engine and the Compose plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Run docker without sudo (post-install guide). Close and reopen the terminal afterwards
+sudo usermod -aG docker $USER
+```
+
+Check in a new terminal: `docker run hello-world` and `docker compose version`. Membership in the `docker` group grants root-level access to the machine ([post-install guide](https://docs.docker.com/engine/install/linux-postinstall/)).
+
+**uv** ([official guide](https://docs.astral.sh/uv/getting-started/installation/)). It installs into `~/.local/bin`, for your user only:
+
+```bash
+curl -LsSf https://astral.sh/uv/0.13.9/install.sh | sh   # tested version; drop "0.13.9/" for the latest
+uv --version
+```
+
+Python does not need to be installed separately: `make setup` makes uv use a Python 3.12 that is already on the system, or download one.
 
 ## 3. WSL configuration
 
@@ -66,8 +152,13 @@ git config user.email "<your personal or GitHub noreply email>"
 ## 5. Local configuration *(Stage 2+)*
 
 ```bash
-cp .env.example .env      # then fill in the values
+make setup                # 1. uv creates .venv with Python 3.12 and the locked packages (uv.lock)
+                          #    and copies .env.example to .env if .env does not exist yet
+code .env                 # 2. open .env (or use nano) and replace every "change-me"
+openssl rand -hex 16      #    generates a random password; run once per password
 ```
+
+`make setup` runs `uv sync`, uv's equivalent of `python -m venv .venv` + `pip install -r requirements.txt`, with exact versions from `uv.lock`. Run it again after pulling changes to `pyproject.toml` or `uv.lock`. Without `make`, the same is `uv sync` + `cp .env.example .env`.
 
 | Variable group | Variables | Notes |
 |---|---|---|
@@ -148,8 +239,8 @@ The project is considered **reproducible** only after this checklist passes on t
 | # | Check | Expected result |
 |---|---|---|
 | CC-01 | Clone the repository and configure the local Git identity | Clone succeeds; `git config user.email` shows the personal email |
-| CC-02 | Copy `.env.example` → `.env` and fill in the values | No other files needed outside Git (except private keys) |
-| CC-03 | `make setup` | uv installs the pinned Python and dependencies from `uv.lock` |
+| CC-02 | `make setup` | uv installs the pinned Python and dependencies from `uv.lock`; `.env` created from `.env.example` |
+| CC-03 | Fill in `.env` | No other files needed outside Git (except private keys) |
 | CC-04 | `make up` + `make seed` + `make test` | PostgreSQL healthy; row counts match [section 7.1](#71-source-systems-stage-2); all tests pass |
 | CC-05 | Airbyte installed and configuration applied | Sources, destination and connections created from versioned configuration |
 | CC-06 | Run an Airbyte sync | Rows in `RAW`; counts match PostgreSQL |
